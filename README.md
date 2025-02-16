@@ -29,6 +29,33 @@ On MacOS: install brew and then brew install graphviz
 On Linux: sudo apt-get install graphviz
 ```
 
+### Running the Project with Docker
+
+You can use the included `Dockerfile` to quickly set up the development environment. This ensures all required dependencies are installed and configured properly.
+
+#### Steps to Build and Run
+
+1. **Build the Docker Image**  
+   From the project root directory, run the following command to build the Docker image:
+   ```bash
+   docker build -t doublex .
+   ```
+
+2. **Run a Container from the Image**  
+   Start a container based on the created image:
+   ```bash
+   docker run doublex
+   ```
+   The container keeps running in the background with the default entrypoint. You can customize this to run specific commands or scripts as needed.
+
+#### Included Dependencies in the Docker Image
+
+The Docker image comes pre-configured with the following:
+- **Python 3.9**: Core runtime for the project
+- **Node.js and npm**: Required for JavaScript-related tasks
+- Various tools: `vim`, `nano`, `curl`
+
+This setup replicates the environment specified in the installation instructions, streamlining the process of running and testing the project.
 
 ## Usage
 

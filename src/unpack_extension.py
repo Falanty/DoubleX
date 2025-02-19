@@ -286,6 +286,16 @@ def extract_all(crx_path):
     extension_zip.extractall()
 
 
+def process_directory(source_dir, dest_path=None):
+    for root, dirs, files in os.walk(source_dir):
+        for file in files:
+            if file.endswith('.crx'):
+                crx_path = os.path.join(root, file)
+                if not dest_path:
+                    dest_path = source_dir
+                unpack_extension(extension_crx=crx_path, dest=dest_path)
+
+
 def main():
     """ Parsing command line parameters. """
 
@@ -296,13 +306,23 @@ def main():
                                                  "background scripts/page, and WARs")
 
     parser.add_argument("-s", "--source", dest='s', metavar="path", type=str,
-                        required=True, help="path of the packed extension to unpack")
+                        required=True, help="path of the packed extension to unpack or directory containing extensions")
     parser.add_argument("-d", "--destination", dest='d', metavar="path", type=str,
-                        required=True, help="path where to store the extracted extension components"
-                                            " (note: a specific folder will be created)")
+                        help="path where to store the extracted extension components"
+                             " (note: a specific folder will be created)")
 
     args = parser.parse_args()
-    unpack_extension(extension_crx=args.s, dest=args.d)
+
+    source = args.s
+    dest = args.d
+    if os.path.isdir(source):
+        process_directory(source_dir=source, dest_path=dest)
+    else:
+        if dest:
+            dest_path = dest
+        else:
+            dest_path = os.path.dirname(source)
+        unpack_extension(extension_crx=source, dest=dest_path)
 
 
 if __name__ == "__main__":

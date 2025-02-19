@@ -259,7 +259,8 @@ def unpack_extension(extension_crx, dest):
         fh.write(json.dumps(manifest, indent=2))
 
     content_scripts = get_all_content_scripts(manifest, extension_zip)
-    with open(os.path.join(dest, "content_scripts.js"), "w") as fh:
+    # combine into contentscript.js to be compatible with doublex.py and examples
+    with open(os.path.join(dest, "contentscript.js"), "w") as fh:
         fh.write(content_scripts)
 
     if manifest_version == 2:

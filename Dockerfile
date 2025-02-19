@@ -15,6 +15,6 @@ RUN cd /app/src \
     && npm install escodegen \
     && npm install -g js-beautify
 
-RUN pip install graphviz
+RUN pip install -r requirements.txt
 
 ENTRYPOINT ["tail", "-f", "/dev/null"]

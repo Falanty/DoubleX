@@ -322,6 +322,7 @@ def main():
         if dest:
             dest_path = dest
         else:
+            # TODO: creates subdir -> inconsistent with process_directory
             dest_path = os.path.dirname(source)
         unpack_extension(extension_crx=source, dest=dest_path)
 

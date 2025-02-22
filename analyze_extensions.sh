@@ -51,6 +51,7 @@ fi
 # Create results directory if it doesn't exist
 mkdir -p "$RESULTS_DIR"
 
+# TODO: allow single dirs to be analyzed
 # Loop through all source extensions in the sources directory
 for SOURCE in "$SOURCE_DIR"/*; do
     if [[ -d "$SOURCE" ]]; then

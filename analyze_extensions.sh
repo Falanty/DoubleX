@@ -49,7 +49,9 @@ if [ -z "$SOURCE_DIR" ]; then
 fi
 
 # Create results directory if it doesn't exist
-mkdir -p "$RESULTS_DIR"
+if [[ ! -z "$RESULTS_DIR" ]]; then
+    mkdir -p "$RESULTS_DIR"
+fi
 
 # TODO: allow single dirs to be analyzed
 # Loop through all source extensions in the sources directory
@@ -63,12 +65,12 @@ for SOURCE in "$SOURCE_DIR"/*; do
         WARS="$SOURCE/wars.js"
 
         # Check if necessary files exist
-        if [[ -f "$CONTENT_SCRIPT" && -f "$BACKGROUND_PAGE" ]]; then
-            if ! $WAR_ONLY; then
+        if [[ -f "$CONTENT_SCRIPT" ]]; then
+            if [[ $WAR_ONLY = false && -f "$BACKGROUND_PAGE" ]]; then
               echo "Analyzing content-script and background-page"
               python "./src/doublex.py" -cs "$CONTENT_SCRIPT" -bp "$BACKGROUND_PAGE" --analysis "$SOURCE/analysis-cs-bp.json"
             fi
-            if ! $BP_ONLY; then
+            if [[ $BP_ONLY = false && -f "$WARS" ]]; then
               echo "Analyzing content-script and wars"
               python "./src/doublex.py" -cs "$CONTENT_SCRIPT" -bp "$WARS" --war --analysis "$SOURCE/analysis-cs-war.json"
             fi

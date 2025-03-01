@@ -20,6 +20,7 @@
 
 import os
 import argparse
+import logging
 
 from vulnerability_detection import analyze_extension
 
@@ -29,6 +30,8 @@ SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 
 def main():
     """ Parsing command line parameters. """
+    logging.basicConfig(filename='doublex.log', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - '
+                                                                            '%(message)s')
 
     parser = argparse.ArgumentParser(prog='doublex',
                                      formatter_class=argparse.RawTextHelpFormatter,

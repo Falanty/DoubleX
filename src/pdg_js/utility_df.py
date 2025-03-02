@@ -65,7 +65,7 @@ class UpperThresholdFilter(logging.Filter):
         return rec.levelno <= self._threshold
 
 
-logging.basicConfig(format='%(levelname)s: %(filename)s: %(message)s', level=logging.CRITICAL)
+# logging.basicConfig(format='%(levelname)s: %(filename)s: %(message)s', level=logging.CRITICAL)
 # logging.basicConfig(filename='pdg.log', format='%(levelname)s: %(filename)s: %(message)s',
 #                     level=logging.DEBUG)
 # LOGGER = logging.getLogger()

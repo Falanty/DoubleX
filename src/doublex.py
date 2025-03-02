@@ -44,50 +44,48 @@ def producer(dir_queue: Queue, root, dirs):
 
 def consumer(dir_queue: Queue, args, process_id):
     while True:
-        logging.log(logging.INFO, f'[${process_id}] Current directories in queue: {dir_queue.qsize()}')
+        logging.log(logging.INFO, f'[{process_id}] Current directories in queue: {dir_queue.qsize()}')
         directory = dir_queue.get()
         if directory is None:
-            logging.log(logging.INFO, f'[${process_id}] Exiting directory queue...')
+            logging.log(logging.INFO, f'[{process_id}] Exiting directory queue...')
             dir_queue.put(None)
             break
-        logging.log(logging.INFO, f'[${process_id}] Started analyzing directory: {directory}')
-        analyze_directory(directory, args.apis, chrome=not args.not_chrome, war=args.war,
-                          analysis_path=args.analysis)
-        logging.log(logging.INFO, f'[${process_id}] Finished analyzing directory: {directory}')
+        logging.log(logging.INFO, f'[{process_id}] Started analyzing directory: {directory}')
+        analyze_directory(directory, args)
+        logging.log(logging.INFO, f'[{process_id}] Finished analyzing directory: {directory}')
 
 
 
-def analyze_directory(directory, json_apis, chrome, war, analysis_path=None):
+def analyze_directory(directory, args):
     """
     Analyze all necessary files within a given directory.
     :param directory: Path to the directory containing extension files
-    :param json_apis: Sensitive APIs to consider for the analysis
-    :param chrome: Boolean to indicate Chrome-based extensions
-    :param war: Boolean to indicate analysis as WAR
-    :param analysis_path: Override directory for analysis results
+    :param args: Arguments from the command line
     """
     background_page = os.path.join(directory, BACKGROUND)
     content_script = os.path.join(directory, CONTENT_SCRIPT)
     wars = os.path.join(directory, 'wars.js')
     manifest = os.path.join(directory, 'manifest.json')
-    analysis_output = analysis_path or os.path.join(directory, 'analysis.json')
+    analysis_path = args.analysis
+    if args.analysis_dir:
+        analysis_path = os.path.join(args.analysis_dir, f'{os.path.basename(directory)}-{args.analysis}')
 
     if os.path.isfile(content_script):
-        if not war and os.path.isfile(background_page):
+        if not args.war and os.path.isfile(background_page):
             logging.info(f'Analyzing content-script and background-page in {directory}')
             analyze_extension(content_script, background_page,
-                              json_analysis=analysis_output,
-                              chrome=chrome,
-                              war=war,
-                              json_apis=json_apis,
+                              json_analysis=analysis_path,
+                              chrome=not args.not_chrome,
+                              war=args.war,
+                              json_apis=args.apis,
                               manifest_path=manifest)
-        if war and os.path.isfile(wars):
+        if args.war and os.path.isfile(wars):
             logging.info(f'Analyzing content-script and wars in {directory}')
             analyze_extension(content_script, wars,
-                              json_analysis=analysis_output.replace('.json', '-war.json'),
-                              chrome=chrome,
-                              war=war,
-                              json_apis=json_apis,
+                              json_analysis=analysis_path,
+                              chrome=not args.not_chrome,
+                              war=args.war,
+                              json_apis=args.apis,
                               manifest_path=manifest)
         logging.info(f'Analysis completed for directory: {directory}')
     else:
@@ -122,6 +120,7 @@ def main():
                              "This argument is mutually exclusive with '-dir'."
                              "This argument overrides '-cs' and '-bp'")
     parser.add_argument("-pc", "--process-count", dest='pc', metavar="int", type=int,
+                        default=1, choices=range(1, 10),
                         help="the number of processes to use for the analysis. "
                              "Default: 1 "
                              "Maximum: 10 "
@@ -135,8 +134,13 @@ def main():
                         help="path of the extension manifest.json file. "
                              "Default: parent-path-of-content-script/manifest.json")
     parser.add_argument("--analysis", metavar="path", type=str,
+                        default="analysis.json",
                         help="path of the file to store the analysis results in. "
-                             "Default: parent-path-of-content-script/analysis.json")
+                             "Default: parent-path-of-content-script/analysis[-war].json")
+    parser.add_argument("-ad", "--analysis-dir", metavar="path", type=str,
+                        help="path of the directory to store the analysis file(s) in. "
+                             "The files will be named '<extension-dir>-analysis.json' "
+                             "This argument is only used in combination with '-dir' or '-dirs'")
     parser.add_argument("--apis", metavar="str", type=str, default='permissions',
                         help='''specify the sensitive APIs to consider for the analysis:
     - 'permissions' (default): DoubleX selected APIs iff the extension has the corresponding permissions;
@@ -152,13 +156,19 @@ def main():
     bp = args.bp
     directory = args.dir
     directories = args.dirs
-    process_count = args.pc or 1
+    process_count = args.pc
+
+    if args.war:
+        args.analysis = args.analysis.replace('.json', '-war.json')
+
+    if args.analysis_dir and not os.path.isdir(args.analysis_dir):
+        os.makedirs(args.analysis_dir)
 
     dir_queue = Queue()
 
     if directory:
         logging.info(f'Analyzing extension directory: {directory}')
-        analyze_directory(directory, args.apis, chrome=not args.not_chrome, war=args.war, analysis_path=args.analysis)
+        analyze_directory(directory, args)
     elif directories:
         logging.info(f'Analyzing extension directories in: {directories}')
         dirs = os.listdir(directories)
@@ -166,9 +176,9 @@ def main():
         input_process = Process(target=producer, args=(dir_queue, directories, dirs))
         input_process.start()
 
-        logging.log(logging.INFO, f'Starting consumer ${process_count} processes...')
+        logging.log(logging.INFO, f'Starting consumer {process_count} processes...')
         analysis_processes = [Process(target=consumer, args=[dir_queue, args, process_id],
-                                      name=f'AnalysisProcess-${process_id}') for process_id in range(process_count)]
+                                      name=f'AnalysisProcess-{process_id}') for process_id in range(process_count)]
         for process in analysis_processes:
             process.start()
         all_processes = analysis_processes + [input_process]

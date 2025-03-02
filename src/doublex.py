@@ -21,6 +21,7 @@
 import os
 import argparse
 import logging
+from multiprocessing import Process, Queue
 
 from vulnerability_detection import analyze_extension
 
@@ -30,10 +31,30 @@ CONTENT_SCRIPT = 'contentscript.js'
 logging.basicConfig(
     filename='doublex.log',
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='[%(processName)s] %(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+
+def producer(dir_queue: Queue, root, dirs):
+    for d in dirs:
+        dir_queue.put(os.path.join(root, d))
+    dir_queue.put(None)
+
+
+def consumer(dir_queue: Queue, args, process_id):
+    while True:
+        logging.log(logging.INFO, f'[${process_id}] Current directories in queue: {dir_queue.qsize()}')
+        directory = dir_queue.get()
+        if directory is None:
+            logging.log(logging.INFO, f'[${process_id}] Exiting directory queue...')
+            dir_queue.put(None)
+            break
+        logging.log(logging.INFO, f'[${process_id}] Started analyzing directory: {directory}')
+        analyze_directory(directory, args.apis, chrome=not args.not_chrome, war=args.war,
+                          analysis_path=args.analysis)
+        logging.log(logging.INFO, f'[${process_id}] Finished analyzing directory: {directory}')
+
 
 
 def analyze_directory(directory, json_apis, chrome, war, analysis_path=None):
@@ -56,14 +77,16 @@ def analyze_directory(directory, json_apis, chrome, war, analysis_path=None):
             logging.info(f'Analyzing content-script and background-page in {directory}')
             analyze_extension(content_script, background_page,
                               json_analysis=analysis_output,
-                              chrome=chrome, war=False,
+                              chrome=chrome,
+                              war=war,
                               json_apis=json_apis,
                               manifest_path=manifest)
         if war and os.path.isfile(wars):
             logging.info(f'Analyzing content-script and wars in {directory}')
             analyze_extension(content_script, wars,
                               json_analysis=analysis_output.replace('.json', '-war.json'),
-                              chrome=chrome, war=True,
+                              chrome=chrome,
+                              war=war,
                               json_apis=json_apis,
                               manifest_path=manifest)
         logging.info(f'Analysis completed for directory: {directory}')
@@ -88,12 +111,21 @@ def main():
                         help="path of the background page "
                              "or path of the WAR if the parameter '--war' is given. "
                              "Default for background: empty/background.js (i.e., empty JS file)")
-    parser.add_argument("-dir", "--directory", dest='directory', metavar="path", type=str,
+    parser.add_argument("-dir", "--directory", dest='dir', metavar="path", type=str,
                         help="path of a directory containing the extension files. "
-                             "Analyzes all supported files in the directory.")
-    parser.add_argument("-dirs", "--directories", dest='directories', metavar="path", type=str,
+                             "Analyzes all supported files in the directory."
+                             "This argument is mutually exclusive with '-dirs'"
+                             "This argument overrides '-cs' and '-bp'")
+    parser.add_argument("-dirs", "--directories", dest='dirs', metavar="path", type=str,
                         help="path of a directory containing directories of extension files. "
-                             "Analyzes all supported files in the directories of the given directory.")
+                             "Analyzes all supported files in the directories of the given directory. "
+                             "This argument is mutually exclusive with '-dir'."
+                             "This argument overrides '-cs' and '-bp'")
+    parser.add_argument("-pc", "--process-count", dest='pc', metavar="int", type=int,
+                        help="the number of processes to use for the analysis. "
+                             "Default: 1 "
+                             "Maximum: 10 "
+                             "This argument is only used in combination with '-dirs'")
     parser.add_argument("--war", action='store_true',
                         help="indicate that the parameter '-bp' is the path of a WAR")
     parser.add_argument("--not-chrome", dest='not_chrome', action='store_true',
@@ -118,24 +150,39 @@ def main():
 
     cs = args.cs
     bp = args.bp
-    directory = args.directory
-    directories = args.directories
+    directory = args.dir
+    directories = args.dirs
+    process_count = args.pc or 1
+
+    dir_queue = Queue()
 
     if directory:
         logging.info(f'Analyzing extension directory: {directory}')
         analyze_directory(directory, args.apis, chrome=not args.not_chrome, war=args.war, analysis_path=args.analysis)
     elif directories:
         logging.info(f'Analyzing extension directories in: {directories}')
-        for root, dirs, files in os.walk(directories):
-            for d in dirs:
-                analyze_directory(os.path.join(root, d), args.apis, chrome=not args.not_chrome, war=args.war,
-                                  analysis_path=args.analysis)
+        dirs = os.listdir(directories)
+        logging.log(logging.INFO, f'Starting producer process...')
+        input_process = Process(target=producer, args=(dir_queue, directories, dirs))
+        input_process.start()
+
+        logging.log(logging.INFO, f'Starting consumer ${process_count} processes...')
+        analysis_processes = [Process(target=consumer, args=[dir_queue, args, process_id],
+                                      name=f'AnalysisProcess-${process_id}') for process_id in range(process_count)]
+        for process in analysis_processes:
+            process.start()
+        all_processes = analysis_processes + [input_process]
+        for process in all_processes:
+            process.join()
+
     else:
         logging.info(f'Analyzing extension files+: {directory}')
         cs = cs or os.path.join(os.path.dirname(SRC_PATH), 'empty', CONTENT_SCRIPT)
         bp = bp or os.path.join(os.path.dirname(SRC_PATH), 'empty', BACKGROUND)
         analyze_extension(cs, bp, json_analysis=args.analysis, chrome=not args.not_chrome,
                           war=args.war, json_apis=args.apis, manifest_path=args.manifest)
+
+    logging.info('DoubleX finished')
 
 
 if __name__ == "__main__":

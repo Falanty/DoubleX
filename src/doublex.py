@@ -71,7 +71,7 @@ def analyze_directory(directory, args):
         analysis_path = os.path.join(args.analysis_dir, f'{os.path.basename(directory)}-{args.analysis}')
 
     if os.path.isfile(content_script):
-        if not args.war and os.path.isfile(background_page):
+        if os.path.isfile(background_page):
             logging.info(f'Analyzing content-script and background-page in {directory}')
             analyze_extension(content_script, background_page,
                               json_analysis=analysis_path,
@@ -79,10 +79,10 @@ def analyze_directory(directory, args):
                               war=args.war,
                               json_apis=args.apis,
                               manifest_path=manifest)
-        if args.war and os.path.isfile(wars):
+        if os.path.isfile(wars):
             logging.info(f'Analyzing content-script and wars in {directory}')
             analyze_extension(content_script, wars,
-                              json_analysis=analysis_path,
+                              json_analysis=analysis_path.replace('.json', '-war.json'),
                               chrome=not args.not_chrome,
                               war=args.war,
                               json_apis=args.apis,
@@ -113,12 +113,12 @@ def main():
                         help="path of a directory containing the extension files. "
                              "Analyzes all supported files in the directory."
                              "This argument is mutually exclusive with '-dirs'"
-                             "This argument overrides '-cs' and '-bp'")
+                             "This argument overrides '-cs' and '-bp' and '--war'")
     parser.add_argument("-dirs", "--directories", dest='dirs', metavar="path", type=str,
                         help="path of a directory containing directories of extension files. "
                              "Analyzes all supported files in the directories of the given directory. "
                              "This argument is mutually exclusive with '-dir'."
-                             "This argument overrides '-cs' and '-bp'")
+                             "This argument overrides '-cs', '-bp' and '--war'")
     parser.add_argument("-pc", "--process-count", dest='pc', metavar="int", type=int,
                         default=1, choices=range(1, 10),
                         help="the number of processes to use for the analysis. "
@@ -157,9 +157,6 @@ def main():
     directory = args.dir
     directories = args.dirs
     process_count = args.pc
-
-    if args.war:
-        args.analysis = args.analysis.replace('.json', '-war.json')
 
     if args.analysis_dir and not os.path.isdir(args.analysis_dir):
         os.makedirs(args.analysis_dir)

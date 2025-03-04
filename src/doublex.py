@@ -17,7 +17,7 @@
 """
     To call DoubleX from the command-line.
 """
-
+import datetime
 import os
 import argparse
 import logging
@@ -29,12 +29,13 @@ BACKGROUND = 'background.js'
 CONTENT_SCRIPT = 'contentscript.js'
 
 logging.basicConfig(
-    filename='doublex.log',
+    filename=f'./logs/{datetime.date.today()}.log',
     level=logging.INFO,
     format='[%(processName)s] %(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+
 
 def producer(dir_queue: Queue, root, dirs):
     for d in dirs:
@@ -53,7 +54,6 @@ def consumer(dir_queue: Queue, args, process_id):
         logging.log(logging.INFO, f'[{process_id}] Started analyzing directory: {directory}')
         analyze_directory(directory, args)
         logging.log(logging.INFO, f'[{process_id}] Finished analyzing directory: {directory}')
-
 
 
 def analyze_directory(directory, args):

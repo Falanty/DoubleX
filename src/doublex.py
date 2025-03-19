@@ -66,9 +66,14 @@ def analyze_directory(directory, args):
     content_script = os.path.join(directory, CONTENT_SCRIPT)
     wars = os.path.join(directory, 'wars.js')
     manifest = os.path.join(directory, 'manifest.json')
-    analysis_path = args.analysis
     if args.analysis_dir:
-        analysis_path = os.path.join(args.analysis_dir, f'{os.path.basename(directory)}-{args.analysis}')
+        analysis_dir = args.analysis_dir
+        analysis_file = f'{os.path.basename(directory)}-{args.analysis}'
+    else:
+        analysis_dir = directory
+        analysis_file = args.analysis
+    analysis_path = os.path.join(analysis_dir, analysis_file)
+
 
     if os.path.isfile(content_script):
         if os.path.isfile(background_page):
@@ -137,7 +142,7 @@ def main():
                         default="analysis.json",
                         help="path of the file to store the analysis results in. "
                              "Default: parent-path-of-content-script/analysis[-war].json")
-    parser.add_argument("-ad", "--analysis-dir", metavar="path", type=str,
+    parser.add_argument("-ad", "--analysis-dir", dest="analysis_dir", metavar="path", type=str,
                         help="path of the directory to store the analysis file(s) in. "
                              "The files will be named '<extension-dir>-analysis.json' "
                              "This argument is only used in combination with '-dir' or '-dirs'")

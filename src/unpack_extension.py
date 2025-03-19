@@ -287,14 +287,13 @@ def extract_all(crx_path):
     extension_zip.extractall()
 
 
-def process_directory(source_dir, dest_path=None, limit=None):
+def process_directory(source, dest=None, limit=None):
     unpacked_extensions = 0
-    for root, dirs, files in os.walk(source_dir):
+    for root, dirs, files in os.walk(source):
         for file in files:
             if file.endswith('.crx'):
                 crx_path = os.path.join(root, file)
-                if not dest_path:
-                    dest_path = source_dir
+                dest_path = dest or root
                 unpack_extension(extension_crx=crx_path, dest=dest_path)
                 unpacked_extensions += 1
                 if limit is not None and unpacked_extensions >= limit:
@@ -324,13 +323,9 @@ def main():
     dest = args.d
     limit = args.l
     if os.path.isdir(source):
-        process_directory(source_dir=source, dest_path=dest, limit=limit)
+        process_directory(source=source, dest=dest, limit=limit)
     else:
-        if dest:
-            dest_path = dest
-        else:
-            # TODO: creates subdir -> inconsistent with process_directory
-            dest_path = os.path.dirname(source)
+        dest_path = dest or os.path.dirname(source)
         unpack_extension(extension_crx=source, dest=dest_path)
 
 

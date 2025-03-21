@@ -24,6 +24,7 @@ import logging
 import fnmatch
 import hashlib
 import argparse
+import time
 from urllib.parse import urljoin
 from zipfile import ZipFile
 from bs4 import BeautifulSoup
@@ -291,7 +292,7 @@ def process_directory(source, dest=None, limit=None):
     unpacked_extensions = 0
     for root, dirs, files in os.walk(source):
         for file in files:
-            if file.endswith('.crx'):
+            if file.endswith(".crx"):
                 crx_path = os.path.join(root, file)
                 dest_path = dest or root
                 unpack_extension(extension_crx=crx_path, dest=dest_path)
@@ -300,21 +301,32 @@ def process_directory(source, dest=None, limit=None):
                     return
 
 
+def benchmark_execution(func, *args, **kwargs):
+    start = time.perf_counter()
+    func(*args, **kwargs)
+    end = time.perf_counter()
+    duration = end - start
+    print(f"Execution time: {duration} seconds")
+    logging.debug(f"Execution time: {duration} seconds")
+
+
 def main():
     """ Parsing command line parameters. """
 
-    parser = argparse.ArgumentParser(prog='unpack',
+    parser = argparse.ArgumentParser(prog="unpack",
                                      formatter_class=argparse.RawTextHelpFormatter,
                                      description="Unpacks a Chrome extension (if manifest v2 or v3)"
                                                  " and extracts its manifest, content scripts, "
                                                  "background scripts/page, and WARs")
 
-    parser.add_argument("-s", "--source", dest='s', metavar="path", type=str,
+    parser.add_argument("-s", "--source", dest="s", metavar="path", type=str,
                         required=True, help="path of the packed extension to unpack or directory containing extensions")
-    parser.add_argument("-d", "--destination", dest='d', metavar="path", type=str,
+    parser.add_argument("-d", "--destination", dest="d", metavar="path", type=str,
                         help="path where to store the extracted extension components"
                              " (note: a specific folder will be created)")
-    parser.add_argument("-l", "--limit", dest='l', metavar="int", type=int,
+    parser.add_argument("-l", "--limit", dest="l", metavar="int", type=int,
+                        help="limit on how many extensions should be unpacked")
+    parser.add_argument("-b", "--benchmark", dest="b", action="store_true",
                         help="limit on how many extensions should be unpacked")
 
     args = parser.parse_args()
@@ -322,11 +334,20 @@ def main():
     source = args.s
     dest = args.d
     limit = args.l
+    benchmark = args.b
+
     if os.path.isdir(source):
-        process_directory(source=source, dest=dest, limit=limit)
+        func = process_directory
+        kwargs = {"source": source, "dest": dest, "limit": limit}
     else:
+        func = unpack_extension
         dest_path = dest or os.path.dirname(source)
-        unpack_extension(extension_crx=source, dest=dest_path)
+        kwargs = {"extension_crx": source, "dest": dest_path}
+
+    if benchmark:
+        benchmark_execution(func, **kwargs)
+    else:
+        func(**kwargs)
 
 
 if __name__ == "__main__":

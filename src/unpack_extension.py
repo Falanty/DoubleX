@@ -62,18 +62,18 @@ def read_from_zip(zf, filename):
     try:
         return zf.read(filename)
 
-    except KeyError:
+    except KeyError as e:
         # Now try lowercase
         mapping = {}
         for zi in zf.infolist():
             mapping[zi.filename.lower()] = zi.filename
         if filename.lower() in mapping:
             return zf.read(mapping[filename.lower()])
-        logging.exception(zf.filename, filename, 'KeyError')
+        logging.exception(f"{filename}: {e}")
         return b''
 
     except Exception as e:
-        logging.exception(zf.filename, filename, e)
+        logging.exception(f"{filename}: {e}")
         return b''
 
 

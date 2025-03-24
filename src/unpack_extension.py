@@ -30,6 +30,28 @@ from zipfile import ZipFile
 from bs4 import BeautifulSoup
 
 
+logging.basicConfig(
+    filename=f'./logs/unpack_{datetime.date.today()}.log',
+    level=logging.DEBUG,
+    format='[%(processName)s] %(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+
+def benchmark(func):
+    def wrapper(*args, benchmark=False, **kwargs):
+        if benchmark:
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            end = time.perf_counter()
+            duration = end - start
+            print(f"Execution time: {duration} seconds")
+            logging.debug(f"Execution time: {duration} seconds")
+        else:
+            result = func(*args, **kwargs)
+        return result
+    return wrapper
+
+
 def read_from_zip(zf, filename):
     """ Returns the bytes of the file filename in the archive zf. """
 
@@ -226,6 +248,7 @@ def get_wars_v3(manifest, extension_zip):
     return war_scripts + pack_and_beautify(extension_zip, all_scripts)
 
 
+@benchmark
 def unpack_extension(extension_crx, dest):
     """
     Call this function to extract the manifest, content scripts, background scripts, and WARs.
@@ -288,6 +311,7 @@ def extract_all(crx_path):
     extension_zip.extractall()
 
 
+@benchmark
 def process_directory(source, dest=None, limit=None):
     unpacked_extensions = 0
     for root, dirs, files in os.walk(source):
@@ -299,15 +323,6 @@ def process_directory(source, dest=None, limit=None):
                 unpacked_extensions += 1
                 if limit is not None and unpacked_extensions >= limit:
                     return
-
-
-def benchmark_execution(func, *args, **kwargs):
-    start = time.perf_counter()
-    func(*args, **kwargs)
-    end = time.perf_counter()
-    duration = end - start
-    print(f"Execution time: {duration} seconds")
-    logging.debug(f"Execution time: {duration} seconds")
 
 
 def main():
@@ -334,20 +349,14 @@ def main():
     source = args.s
     dest = args.d
     limit = args.l
-    benchmark = args.b
 
     if os.path.isdir(source):
-        func = process_directory
         kwargs = {"source": source, "dest": dest, "limit": limit}
+        process_directory(benchmark=args.b, **kwargs)
     else:
-        func = unpack_extension
         dest_path = dest or os.path.dirname(source)
         kwargs = {"extension_crx": source, "dest": dest_path}
-
-    if benchmark:
-        benchmark_execution(func, **kwargs)
-    else:
-        func(**kwargs)
+        unpack_extension(benchmark=args.b, **kwargs)
 
 
 if __name__ == "__main__":

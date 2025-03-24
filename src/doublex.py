@@ -74,7 +74,6 @@ def analyze_directory(directory, args):
         analysis_file = args.analysis
     analysis_path = os.path.join(analysis_dir, analysis_file)
 
-
     if os.path.isfile(content_script):
         if os.path.isfile(background_page):
             logging.info(f'Analyzing content-script and background-page in {directory}')
@@ -166,12 +165,11 @@ def main():
     if args.analysis_dir and not os.path.isdir(args.analysis_dir):
         os.makedirs(args.analysis_dir)
 
-    dir_queue = Queue()
-
     if directory:
         logging.info(f'Analyzing extension directory: {directory}')
         analyze_directory(directory, args)
     elif directories:
+        dir_queue = Queue()
         logging.info(f'Analyzing extension directories in: {directories}')
         dirs = os.listdir(directories)
         logging.log(logging.INFO, f'Starting producer process...')

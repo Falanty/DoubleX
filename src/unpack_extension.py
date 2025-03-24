@@ -25,10 +25,12 @@ import fnmatch
 import hashlib
 import argparse
 import time
+import datetime
+from typing import Callable
 from urllib.parse import urljoin
 from zipfile import ZipFile
 from bs4 import BeautifulSoup
-
+from multiprocessing import Process, Queue
 
 logging.basicConfig(
     filename=f'./logs/unpack_{datetime.date.today()}.log',
@@ -37,18 +39,18 @@ logging.basicConfig(
 )
 
 
-def benchmark(func):
+def benchmark(func: Callable):
     def wrapper(*args, benchmark=False, **kwargs):
         if benchmark:
             start = time.perf_counter()
             result = func(*args, **kwargs)
             end = time.perf_counter()
             duration = end - start
-            print(f"Execution time: {duration} seconds")
-            logging.debug(f"Execution time: {duration} seconds")
+            logging.debug(f"Execution time for {func.__name__}: {duration} seconds")
         else:
             result = func(*args, **kwargs)
         return result
+
     return wrapper
 
 
@@ -311,18 +313,44 @@ def extract_all(crx_path):
     extension_zip.extractall()
 
 
-@benchmark
-def process_directory(source, dest=None, limit=None):
-    unpacked_extensions = 0
-    for root, dirs, files in os.walk(source):
+def producer(file_queue: Queue, root):
+    for root, dirs, files in os.walk(root):
         for file in files:
             if file.endswith(".crx"):
-                crx_path = os.path.join(root, file)
-                dest_path = dest or root
-                unpack_extension(extension_crx=crx_path, dest=dest_path)
-                unpacked_extensions += 1
-                if limit is not None and unpacked_extensions >= limit:
-                    return
+                file_queue.put(os.path.join(root, file))
+    file_queue.put(None)
+
+
+def consumer(queue: Queue, args, process_id):
+    while True:
+        logging.log(logging.INFO, f'[{process_id}] Current items in queue: {queue.qsize()}')
+        item = queue.get()
+        if item is None:
+            logging.log(logging.INFO, f'[{process_id}] Exiting queue...')
+            queue.put(None)
+            break
+        logging.log(logging.INFO, f'[{process_id}] Started unpacking item: {item}')
+        dest = args.d or os.path.dirname(item)
+        unpack_extension(extension_crx=item, dest=dest, benchmark=args.b)
+        logging.log(logging.INFO, f'[{process_id}] Finished unpacking item: {item}')
+
+
+@benchmark
+def unpack_directory(args):
+    process_count = args.pc
+    queue = Queue()
+    logging.info(f'Starting producer process...')
+    input_process = Process(target=producer, args=(queue, args.s))
+    input_process.start()
+    logging.log(logging.INFO, f'Starting consumer {process_count} processes...')
+    unpack_process = [Process(target=consumer,
+                              args=[queue, args, process_id],
+                              name=f'UnpackProcess-{process_id}') for process_id in range(process_count)]
+    for process in unpack_process:
+        process.start()
+    all_processes = unpack_process + [input_process]
+    for process in all_processes:
+        process.join()
 
 
 def main():
@@ -339,24 +367,25 @@ def main():
     parser.add_argument("-d", "--destination", dest="d", metavar="path", type=str,
                         help="path where to store the extracted extension components"
                              " (note: a specific folder will be created)")
-    parser.add_argument("-l", "--limit", dest="l", metavar="int", type=int,
-                        help="limit on how many extensions should be unpacked")
     parser.add_argument("-b", "--benchmark", dest="b", action="store_true",
                         help="limit on how many extensions should be unpacked")
+    parser.add_argument("-pc", "--process-count", dest='pc', metavar="int", type=int,
+                        default=1, choices=range(1, 10),
+                        help="the number of processes to use for the analysis. "
+                             "Default: 1 "
+                             "Maximum: 10 "
+                             "This argument is only used if source is a directory")
 
     args = parser.parse_args()
-
     source = args.s
-    dest = args.d
-    limit = args.l
 
     if os.path.isdir(source):
-        kwargs = {"source": source, "dest": dest, "limit": limit}
-        process_directory(benchmark=args.b, **kwargs)
+        logging.info(f'Unpacking extensions in directory: {source}')
+        unpack_directory(args, benchmark=args.b)
     else:
-        dest_path = dest or os.path.dirname(source)
-        kwargs = {"extension_crx": source, "dest": dest_path}
-        unpack_extension(benchmark=args.b, **kwargs)
+        logging.info(f'Unpacking extension: {source}')
+        dest = args.d or os.path.dirname(source)
+        unpack_extension(extension_crx=source, dest=dest, benchmark=args.b)
 
 
 if __name__ == "__main__":

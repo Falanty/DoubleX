@@ -321,18 +321,21 @@ def producer(file_queue: Queue, root):
     file_queue.put(None)
 
 
-def consumer(queue: Queue, args, process_id, counter: Value):
+def consumer(queue: Queue, args, counter: Value):
     while True:
-        logging.log(logging.INFO, f'[{process_id}] Current items in queue: {queue.qsize()}')
+        logging.log(logging.INFO, f'Current items in queue: {queue.qsize()}')
         item = queue.get()
         if item is None:
-            logging.log(logging.INFO, f'[{process_id}] Exiting queue...')
+            logging.log(logging.INFO, f'Exiting queue...')
             queue.put(None)
             break
-        logging.log(logging.INFO, f'[{process_id}] Started unpacking item: {item}')
+        logging.log(logging.INFO, f'Started unpacking item: {item}')
         dest = args.d or os.path.dirname(item)
-        unpack_extension(extension_crx=item, dest=dest, benchmark=args.b)
-        logging.log(logging.INFO, f'[{process_id}] Finished unpacking item: {item}')
+        try:
+            unpack_extension(extension_crx=item, dest=dest, benchmark=args.b)
+        except Exception as e:
+            logging.error(f'{item}: {e}')
+        logging.log(logging.INFO, f'Finished unpacking item: {item}')
         counter.value += 1
 
 
@@ -345,8 +348,7 @@ def unpack_directory(args):
     input_process = Process(target=producer, args=(queue, args.s))
     input_process.start()
     logging.info(f'Starting consumer {process_count} processes...')
-    unpack_process = [Process(target=consumer,
-                              args=[queue, args, process_id, counter],
+    unpack_process = [Process(target=consumer, args=[queue, args, counter],
                               name=f'UnpackProcess-{process_id}') for process_id in range(process_count)]
     for process in unpack_process:
         process.start()

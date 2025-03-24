@@ -69,11 +69,11 @@ def read_from_zip(zf, filename):
             mapping[zi.filename.lower()] = zi.filename
         if filename.lower() in mapping:
             return zf.read(mapping[filename.lower()])
-        logging.exception(f"{filename}: {e}")
+        logging.exception(f"{zf.filename}: {e}")
         return b''
 
     except Exception as e:
-        logging.exception(f"{filename}: {e}")
+        logging.exception(f"{zf.filename}: {e}")
         return b''
 
 

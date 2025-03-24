@@ -30,7 +30,7 @@ from typing import Callable
 from urllib.parse import urljoin
 from zipfile import ZipFile
 from bs4 import BeautifulSoup
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Value
 
 logging.basicConfig(
     filename=f'./logs/unpack_{datetime.date.today()}.log',
@@ -321,7 +321,7 @@ def producer(file_queue: Queue, root):
     file_queue.put(None)
 
 
-def consumer(queue: Queue, args, process_id):
+def consumer(queue: Queue, args, process_id, counter: Value):
     while True:
         logging.log(logging.INFO, f'[{process_id}] Current items in queue: {queue.qsize()}')
         item = queue.get()
@@ -333,24 +333,27 @@ def consumer(queue: Queue, args, process_id):
         dest = args.d or os.path.dirname(item)
         unpack_extension(extension_crx=item, dest=dest, benchmark=args.b)
         logging.log(logging.INFO, f'[{process_id}] Finished unpacking item: {item}')
+        counter.value += 1
 
 
 @benchmark
 def unpack_directory(args):
     process_count = args.pc
     queue = Queue()
+    counter = Value('i', 0)
     logging.info(f'Starting producer process...')
     input_process = Process(target=producer, args=(queue, args.s))
     input_process.start()
-    logging.log(logging.INFO, f'Starting consumer {process_count} processes...')
+    logging.info(f'Starting consumer {process_count} processes...')
     unpack_process = [Process(target=consumer,
-                              args=[queue, args, process_id],
+                              args=[queue, args, process_id, counter],
                               name=f'UnpackProcess-{process_id}') for process_id in range(process_count)]
     for process in unpack_process:
         process.start()
     all_processes = unpack_process + [input_process]
     for process in all_processes:
         process.join()
+    logging.info(f'Processed {counter.value} extensions.')
 
 
 def main():
@@ -370,7 +373,7 @@ def main():
     parser.add_argument("-b", "--benchmark", dest="b", action="store_true",
                         help="limit on how many extensions should be unpacked")
     parser.add_argument("-pc", "--process-count", dest='pc', metavar="int", type=int,
-                        default=1, choices=range(1, 10),
+                        default=1, choices=range(1, 11),
                         help="the number of processes to use for the analysis. "
                              "Default: 1 "
                              "Maximum: 10 "

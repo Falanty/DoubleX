@@ -30,7 +30,7 @@ CONTENT_SCRIPT = 'contentscript.js'
 
 logging.basicConfig(
     filename=f'./logs/{datetime.date.today()}.log',
-    level=logging.INFO,
+    level=logging.CRITICAL,
     format='[%(processName)s] %(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
@@ -45,15 +45,15 @@ def producer(dir_queue: Queue, root, dirs):
 
 def consumer(dir_queue: Queue, args):
     while True:
-        logging.info(f'Current directories in queue: {dir_queue.qsize()}')
+        logging.critical(f'Current directories in queue: {dir_queue.qsize()}')
         directory = dir_queue.get()
         if directory is None:
-            logging.info(f'Exiting directory queue...')
+            logging.critical(f'Exiting directory queue...')
             dir_queue.put(None)
             break
-        logging.info(f'Started analyzing directory: {directory}')
+        logging.critical(f'Started analyzing directory: {directory}')
         analyze_directory(directory, args)
-        logging.info(f'Finished analyzing directory: {directory}')
+        logging.critical(f'Finished analyzing directory: {directory}')
 
 
 def analyze_directory(directory, args):
@@ -76,7 +76,7 @@ def analyze_directory(directory, args):
 
     if os.path.isfile(content_script):
         if os.path.isfile(background_page):
-            logging.info(f'Analyzing content-script and background-page in {directory}')
+            logging.critical(f'Analyzing content-script and background-page in {directory}')
             analyze_extension(content_script, background_page,
                               json_analysis=analysis_path,
                               chrome=not args.not_chrome,
@@ -84,14 +84,14 @@ def analyze_directory(directory, args):
                               json_apis=args.apis,
                               manifest_path=manifest)
         if os.path.isfile(wars):
-            logging.info(f'Analyzing content-script and wars in {directory}')
+            logging.critical(f'Analyzing content-script and wars in {directory}')
             analyze_extension(content_script, wars,
                               json_analysis=analysis_path.replace('.json', '-war.json'),
                               chrome=not args.not_chrome,
                               war=args.war,
                               json_apis=args.apis,
                               manifest_path=manifest)
-        logging.info(f'Analysis completed for directory: {directory}')
+        logging.critical(f'Analysis completed for directory: {directory}')
     else:
         logging.warning(f"Required files not found in {directory}. Skipping...")
 
@@ -99,7 +99,7 @@ def analyze_directory(directory, args):
 def main():
     """ Parsing command line parameters. """
 
-    logging.info('Starting DoubleX')
+    logging.critical('Starting DoubleX')
 
     parser = argparse.ArgumentParser(prog='doublex',
                                      formatter_class=argparse.RawTextHelpFormatter,
@@ -124,10 +124,10 @@ def main():
                              "This argument is mutually exclusive with '-dir'."
                              "This argument overrides '-cs', '-bp' and '--war'")
     parser.add_argument("-pc", "--process-count", dest='pc', metavar="int", type=int,
-                        default=1, choices=range(1, 10),
+                        default=1, choices=range(1, 201),
                         help="the number of processes to use for the analysis. "
                              "Default: 1 "
-                             "Maximum: 10 "
+                             "Maximum: 200 "
                              "This argument is only used in combination with '-dirs'")
     parser.add_argument("--war", action='store_true',
                         help="indicate that the parameter '-bp' is the path of a WAR")
@@ -166,17 +166,17 @@ def main():
         os.makedirs(args.analysis_dir)
 
     if directory:
-        logging.info(f'Analyzing extension directory: {directory}')
+        logging.critical(f'Analyzing extension directory: {directory}')
         analyze_directory(directory, args)
     elif directories:
         dir_queue = Queue()
-        logging.info(f'Analyzing extension directories in: {directories}')
+        logging.critical(f'Analyzing extension directories in: {directories}')
         dirs = os.listdir(directories)
-        logging.info(f'Starting producer process...')
+        logging.critical(f'Starting producer process...')
         input_process = Process(target=producer, args=(dir_queue, directories, dirs))
         input_process.start()
 
-        logging.info(f'Starting {process_count} consumer processes...')
+        logging.critical(f'Starting {process_count} consumer processes...')
         analysis_processes = [Process(target=consumer, args=[dir_queue, args],
                                       name=f'AnalysisProcess-{process_id}') for process_id in range(process_count)]
         for process in analysis_processes:
@@ -186,13 +186,13 @@ def main():
             process.join()
 
     else:
-        logging.info(f'Analyzing extension files: {directory}')
+        logging.critical(f'Analyzing extension files: {directory}')
         cs = cs or os.path.join(os.path.dirname(SRC_PATH), 'empty', CONTENT_SCRIPT)
         bp = bp or os.path.join(os.path.dirname(SRC_PATH), 'empty', BACKGROUND)
         analyze_extension(cs, bp, json_analysis=args.analysis, chrome=not args.not_chrome,
                           war=args.war, json_apis=args.apis, manifest_path=args.manifest)
 
-    logging.info('DoubleX finished')
+    logging.critical('DoubleX finished')
 
 
 if __name__ == "__main__":

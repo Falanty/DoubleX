@@ -176,7 +176,7 @@ def main():
         input_process = Process(target=producer, args=(dir_queue, directories, dirs))
         input_process.start()
 
-        logging.info(f'Starting consumer {process_count} processes...')
+        logging.info(f'Starting {process_count} consumer processes...')
         analysis_processes = [Process(target=consumer, args=[dir_queue, args],
                                       name=f'AnalysisProcess-{process_id}') for process_id in range(process_count)]
         for process in analysis_processes:
@@ -186,7 +186,7 @@ def main():
             process.join()
 
     else:
-        logging.info(f'Analyzing extension files+: {directory}')
+        logging.info(f'Analyzing extension files: {directory}')
         cs = cs or os.path.join(os.path.dirname(SRC_PATH), 'empty', CONTENT_SCRIPT)
         bp = bp or os.path.join(os.path.dirname(SRC_PATH), 'empty', BACKGROUND)
         analyze_extension(cs, bp, json_analysis=args.analysis, chrome=not args.not_chrome,

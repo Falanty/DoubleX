@@ -43,17 +43,17 @@ def producer(dir_queue: Queue, root, dirs):
     dir_queue.put(None)
 
 
-def consumer(dir_queue: Queue, args, process_id):
+def consumer(dir_queue: Queue, args):
     while True:
-        logging.log(logging.INFO, f'[{process_id}] Current directories in queue: {dir_queue.qsize()}')
+        logging.info(f'Current directories in queue: {dir_queue.qsize()}')
         directory = dir_queue.get()
         if directory is None:
-            logging.log(logging.INFO, f'[{process_id}] Exiting directory queue...')
+            logging.info(f'Exiting directory queue...')
             dir_queue.put(None)
             break
-        logging.log(logging.INFO, f'[{process_id}] Started analyzing directory: {directory}')
+        logging.info(f'Started analyzing directory: {directory}')
         analyze_directory(directory, args)
-        logging.log(logging.INFO, f'[{process_id}] Finished analyzing directory: {directory}')
+        logging.info(f'Finished analyzing directory: {directory}')
 
 
 def analyze_directory(directory, args):
@@ -99,7 +99,7 @@ def analyze_directory(directory, args):
 def main():
     """ Parsing command line parameters. """
 
-    logging.log(logging.INFO, 'Starting DoubleX')
+    logging.info('Starting DoubleX')
 
     parser = argparse.ArgumentParser(prog='doublex',
                                      formatter_class=argparse.RawTextHelpFormatter,
@@ -172,12 +172,12 @@ def main():
         dir_queue = Queue()
         logging.info(f'Analyzing extension directories in: {directories}')
         dirs = os.listdir(directories)
-        logging.log(logging.INFO, f'Starting producer process...')
+        logging.info(f'Starting producer process...')
         input_process = Process(target=producer, args=(dir_queue, directories, dirs))
         input_process.start()
 
-        logging.log(logging.INFO, f'Starting consumer {process_count} processes...')
-        analysis_processes = [Process(target=consumer, args=[dir_queue, args, process_id],
+        logging.info(f'Starting consumer {process_count} processes...')
+        analysis_processes = [Process(target=consumer, args=[dir_queue, args],
                                       name=f'AnalysisProcess-{process_id}') for process_id in range(process_count)]
         for process in analysis_processes:
             process.start()

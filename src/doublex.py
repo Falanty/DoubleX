@@ -74,6 +74,10 @@ def analyze_directory(directory, args):
         analysis_file = args.analysis
     analysis_path = os.path.join(analysis_dir, analysis_file)
 
+    if os.path.isfile(analysis_path) and args.skip_existing:
+        logging.critical(f"Skipping analysis for: {directory} - analysis files exist already")
+        return
+
     if os.path.isfile(content_script):
         if os.path.isfile(background_page):
             logging.critical(f'Analyzing content-script and background-page in {directory}')
@@ -144,6 +148,9 @@ def main():
     parser.add_argument("-ad", "--analysis-dir", dest="analysis_dir", metavar="path", type=str,
                         help="path of the directory to store the analysis file(s) in. "
                              "The files will be named '<extension-dir>-analysis.json' "
+                             "This argument is only used in combination with '-dir' or '-dirs'")
+    parser.add_argument("-skip", "--skip-existing", dest="skip_existing", action="store_true",
+                        help="Skips the analysis for extensions if an analysis file exists already."
                              "This argument is only used in combination with '-dir' or '-dirs'")
     parser.add_argument("--apis", metavar="str", type=str, default='permissions',
                         help='''specify the sensitive APIs to consider for the analysis:

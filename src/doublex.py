@@ -26,7 +26,7 @@ from multiprocessing import Process, Queue
 from vulnerability_detection import analyze_extension
 
 BACKGROUND = 'background.js'
-CONTENT_SCRIPT = 'contentscript.js'
+CONTENT_SCRIPT = 'content_scripts.js'
 
 logging.basicConfig(
     filename=f'./logs/{datetime.date.today()}.log',
@@ -112,7 +112,7 @@ def main():
 
     parser.add_argument("-cs", "--content-script", dest='cs', metavar="path", type=str,
                         help="path of the content script. "
-                             "Default: empty/contentscript.js (i.e., empty JS file)")
+                             "Default: empty/content_scripts.js (i.e., empty JS file)")
     parser.add_argument("-bp", "--background-page", dest='bp', metavar="path", type=str,
                         help="path of the background page "
                              "or path of the WAR if the parameter '--war' is given. "

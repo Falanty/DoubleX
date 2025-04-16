@@ -174,45 +174,48 @@ def init_db(engine: Engine) -> None:
 
 def parse_json_and_populate_db(session: Session, json_data: dict):
     try:
-        extension = json_data.get("extension")
-        benchmarks_data = json_data.get("benchmarks")
-
         run = get_or_create(session, Run, Run.name, json_data[RUN])
 
         analysis = Analysis(run=run,
-                            extension=extension,
+                            extension=json_data.get("extension"),
                             file_name=json_data.get(FILE_NAME),
                             war=("war" in json_data.get(FILE_NAME)))
         session.add(analysis)
 
-        if benchmarks_data:
-            benchmarks = Benchmarks(
-                analysis=analysis,
-                crashes=", ".join(benchmarks_data.get("crashes")),
-                cs_got_ast=benchmarks_data.get("cs: got AST"),
-                cs_ast=benchmarks_data.get("cs: AST"),
-                cs_cfg=benchmarks_data.get("cs: CFG"),
-                cs_pdg=benchmarks_data.get("cs: PDG"),
-                bp_got_ast=benchmarks_data.get("bp: got AST"),
-                bp_ast=benchmarks_data.get("bp: AST"),
-                bp_cfg=benchmarks_data.get("bp: CFG"),
-                bp_pdg=benchmarks_data.get("bp: PDG"),
-                collected_messages=benchmarks_data.get("collected messages"),
-                linked_messages=benchmarks_data.get("linked messages"),
-                cs_dangers_and_from_was=benchmarks_data.get("cs: dangers & from WA"),
-                bp_dangers_and_from_was=benchmarks_data.get("bp: dangers & from WA"),
-                cs_got_vulnerabilities=benchmarks_data.get("cs: got vulnerabilities"),
-                bp_got_vulnerabilities=benchmarks_data.get("bp: got vulnerabilities")
-            )
-            session.add(benchmarks)
+        add_benchmarks(session, analysis, json_data.get("benchmarks"))
 
         add_file(session, analysis, json_data, CS)
         add_file(session, analysis, json_data, BP)
-        session.commit()
 
+        session.commit()
     except Exception as e:
         session.rollback()
         logging.exception(e)
+
+
+def add_benchmarks(session, analysis, benchmarks_data):
+    if not benchmarks_data:
+        logging.info("No benchmarks data")
+        return
+    benchmarks = Benchmarks(
+        analysis=analysis,
+        crashes=", ".join(benchmarks_data.get("crashes")),
+        cs_got_ast=benchmarks_data.get("cs: got AST"),
+        cs_ast=benchmarks_data.get("cs: AST"),
+        cs_cfg=benchmarks_data.get("cs: CFG"),
+        cs_pdg=benchmarks_data.get("cs: PDG"),
+        bp_got_ast=benchmarks_data.get("bp: got AST"),
+        bp_ast=benchmarks_data.get("bp: AST"),
+        bp_cfg=benchmarks_data.get("bp: CFG"),
+        bp_pdg=benchmarks_data.get("bp: PDG"),
+        collected_messages=benchmarks_data.get("collected messages"),
+        linked_messages=benchmarks_data.get("linked messages"),
+        cs_dangers_and_from_was=benchmarks_data.get("cs: dangers & from WA"),
+        bp_dangers_and_from_was=benchmarks_data.get("bp: dangers & from WA"),
+        cs_got_vulnerabilities=benchmarks_data.get("cs: got vulnerabilities"),
+        bp_got_vulnerabilities=benchmarks_data.get("bp: got vulnerabilities")
+    )
+    session.add(benchmarks)
 
 
 def add_file(session: Session, analysis: Analysis, json_data: dict, file_type: str):
@@ -339,7 +342,7 @@ def main():
                     json_data[RUN] = root
                     json_data[FILE_NAME] = file
 
-                    logging.info(f"Saving file {i}/{len(files)} to db : {json_data.get(FILE_NAME)}")
+                    logging.info(f"Saving file {i+1}/{len(files)} to db : {json_data.get(FILE_NAME)}")
                     parse_json_and_populate_db(session, json_data)
         return
 

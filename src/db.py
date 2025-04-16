@@ -123,7 +123,7 @@ class Danger(Base):
     danger_type_id: Mapped[int] = mapped_column(ForeignKey("danger_type.id"), nullable=False)
     api_id: Mapped[int] = mapped_column(ForeignKey("api.id"), nullable=False)
     internal_id: Mapped[str] = mapped_column(String, nullable=False)
-    value: Mapped[str] = mapped_column(String, nullable=True)
+    value: Mapped[str] = mapped_column(JSON, nullable=True)
     line: Mapped[str] = mapped_column(String, nullable=True)
     filename: Mapped[str] = mapped_column(String, nullable=True)
     dataflow: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -217,6 +217,9 @@ def parse_json_and_populate_db(session: Session, json_data: dict):
 
 def add_file(session: Session, analysis: Analysis, json_data: dict, file_type: str):
     file_data = json_data.get(file_type)
+    if not file_data:
+        logging.info(f"No data for file: {file_type}")
+        return
     file = File(analysis=analysis)
     file_type = get_or_create(session, FileType, FileType.name, file_type)
     file.file_type = file_type

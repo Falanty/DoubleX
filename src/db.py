@@ -173,7 +173,6 @@ def init_db(engine: Engine) -> None:
 
 
 def parse_json_and_populate_db(session: Session, json_data: dict):
-    logging.info(f"Saving to db: {json_data.get(FILE_NAME)}")
     try:
         extension = json_data.get("extension")
         benchmarks_data = json_data.get("benchmarks")
@@ -329,12 +328,15 @@ def main():
         logging.info(f'Loading data to db from: {source}')
         with Session(engine).no_autoflush as session:
             for root, dirs, files in os.walk(source):
-                for file in files:
+                for i, file in enumerate(files):
                     if not file.endswith(".json"):
+                        logging.info(f"Skipping non-json file: {file}")
                         continue
                     json_data = json.load(open(os.path.join(root, file), 'r'))
                     json_data[RUN] = root
                     json_data[FILE_NAME] = file
+
+                    logging.info(f"Saving file {i}/{len(files)} to db : {json_data.get(FILE_NAME)}")
                     parse_json_and_populate_db(session, json_data)
         return
 

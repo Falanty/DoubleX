@@ -1,9 +1,11 @@
 import argparse
+import json
 import logging
 import os
+import datetime
 from typing import Optional, List
 from sqlalchemy import create_engine, text, ForeignKey, String, Integer, Boolean, Float
-from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, relationship
+from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, relationship, Session
 
 DB_USER = os.getenv("POSTGRES_USER")
 DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
@@ -18,12 +20,12 @@ with engine.connect() as conn:
     except Exception as e:
         logging.exception(f"Error establishing connection to db: {e}")
 
-
 logging.basicConfig(
-    filename=f'./logs/unpack_{datetime.date.today()}.log',
+    filename=f'./logs/db_{datetime.date.today()}.log',
     level=logging.DEBUG,
     format='[%(processName)s] %(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
 
 class Base(DeclarativeBase):
     pass
@@ -47,7 +49,8 @@ class Analysis(Base):
     war: Mapped[bool] = mapped_column(Boolean, default=False)
 
     run: Mapped['Run'] = relationship("Run", back_populates="analyses")
-    benchmarks: Mapped[Optional['Benchmarks']] = relationship("Benchmarks")
+    benchmarks: Mapped[Optional['Benchmarks']] = relationship("Benchmarks", foreign_keys=[benchmarks_id])
+    files: Mapped[List['File']] = relationship("File", back_populates="file")
 
 
 class Benchmarks(Base):
@@ -85,18 +88,22 @@ class DangerType(Base):
     type: Mapped[str] = mapped_column(String, nullable=False)
 
 
+class Api(Base):
+    __tablename__ = "api"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class File(Base):
     __tablename__ = "file"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     analysis_id: Mapped[int] = mapped_column(ForeignKey("analysis.id"), nullable=False)
     file_type_id: Mapped[int] = mapped_column(ForeignKey("file_type.id"), nullable=False)
 
+    analysis: Mapped['Analysis'] = relationship("Analysis", foreign_keys=[analysis_id])
+    file_type: Mapped['FileType'] = relationship("FileType", foreign_keys=[file_type_id])
 
-class Api(Base):
-    __tablename__ = "api"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    file_type_id: Mapped[int] = mapped_column(ForeignKey("file_type.id"), nullable=False)
-    name: Mapped[str] = mapped_column(String, nullable=False)
+    dangers: Mapped[List['Danger']] = relationship("Danger", back_populates="danger")
 
 
 class Danger(Base):
@@ -110,6 +117,13 @@ class Danger(Base):
     line: Mapped[int] = mapped_column(Integer, nullable=True)
     filename: Mapped[str] = mapped_column(String, nullable=True)
     dataflow: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    danger_type: Mapped['DangerType'] = relationship("DangerType", foreign_keys=[danger_type_id])
+    file: Mapped['File'] = relationship("File", foreign_keys=[file_id])
+    api: Mapped['Api'] = relationship("Api", foreign_keys=[api_id])
+
+    sink_params: Mapped[List['SinkParam']] = relationship("SinkParam", back_populates="sink_param")
+    params: Mapped[List['Param']] = relationship("Param", back_populates="param")
 
 
 class SinkParam(Base):
@@ -125,6 +139,8 @@ class Param(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     danger_id: Mapped[int] = mapped_column(ForeignKey("danger.id"), nullable=False)
     internal_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    param_data: Mapped['ParamData'] = relationship("ParamData", back_populates="param_data")
 
 
 class ParamData(Base):
@@ -144,23 +160,27 @@ def init_db():
     Base.metadata.create_all(engine)
 
 
+def parse_json_and_populate_db(session: Session, json_data: dict):
+    pass
+
+
 def main():
     """ Parsing command line parameters. """
 
-    parser = argparse.ArgumentParser(prog="unpack",
+    parser = argparse.ArgumentParser(prog="db",
                                      formatter_class=argparse.RawTextHelpFormatter,
                                      description="DB management."
                                                  "Used to initialize database, "
                                                  "save json analysis date or extract json data.")
 
     parser.add_argument("-s", "--source", dest="s", metavar="path", type=str,
-                        required=True, help="path of the dir containing analysis files. "
-                                            "mutually exclusive with '-s'")
+                        help="path of the dir containing analysis files. "
+                             "mutually exclusive with '-s'")
     parser.add_argument("-d", "--destination", dest="d", metavar="path", type=str,
                         help="path of the dir to store the exported json files. "
                              "mutually exclusive with '-d'")
     parser.add_argument("-i", "--init", dest="i", action="store_true",
-                        help="initializes the database."
+                        help="initializes the database. "
                              "if the database was already initialized, this has no effect")
 
     args = parser.parse_args()
@@ -171,13 +191,19 @@ def main():
     if init:
         init_db()
 
-    if os.path.isdir(source):
+    if source and os.path.isdir(source):
         logging.info(f'Loading data to db from: {source}')
+        with Session(engine) as session:
+            for root, dirs, files in os.walk(source):
+                for file in files:
+                    if file.endswith(".json"):
+                        json_data = json.load(open(os.path.join(root, file), 'r'))
+                        json_data["run"] = root
+                        parse_json_and_populate_db(session, json_data)
         return
-    if os.path.isdir(destination):
+
+    if destination and os.path.isdir(destination):
         logging.info(f'Extracting data from db to: {destination}')
-        return
-    logging.info()
 
 
 if __name__ == "__main__":

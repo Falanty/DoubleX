@@ -3,8 +3,9 @@ import json
 import logging
 import os
 import datetime
-from typing import Optional, List
-from sqlalchemy import create_engine, text, ForeignKey, String, Integer, Boolean, Float, Engine, JSON
+import re
+from typing import Optional, List, Any
+from sqlalchemy import create_engine, text, ForeignKey, String, Integer, Boolean, Float, Engine, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, relationship, Session
 
 BP = "bp"
@@ -47,7 +48,7 @@ class Run(Base):
 class Analysis(Base):
     __tablename__ = "analysis"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("run.id"), nullable=False)
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), nullable=False)
     extension: Mapped[str] = mapped_column(String, nullable=True)
     file_name: Mapped[str] = mapped_column(String, nullable=True)
     war: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -56,13 +57,14 @@ class Analysis(Base):
     benchmarks: Mapped[Optional['Benchmarks']] = relationship("Benchmarks", back_populates="analysis")
     files: Mapped[List['File']] = relationship("File", back_populates="analysis")
 
+    __table_args__ = (UniqueConstraint("run_id", "extension", "war", name="unique_analysis"),)
+
 
 class Benchmarks(Base):
     __tablename__ = "benchmarks"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    analysis_id: Mapped[int] = mapped_column(ForeignKey("analysis.id"), nullable=False)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("analysis.id", ondelete="CASCADE"), nullable=False)
 
-    crashes: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     cs_got_ast: Mapped[float] = mapped_column(Float, nullable=True)
     cs_ast: Mapped[float] = mapped_column(Float, nullable=True)
     cs_cfg: Mapped[float] = mapped_column(Float, nullable=True)
@@ -79,6 +81,18 @@ class Benchmarks(Base):
     bp_got_vulnerabilities: Mapped[float] = mapped_column(Float, nullable=True)
 
     analysis: Mapped['Analysis'] = relationship("Analysis", back_populates="benchmarks")
+    crashes: Mapped[List['Crash']] = relationship("Crash", back_populates="benchmarks")
+
+
+class Crash(Base):
+    __tablename__ = "crash"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benchmarks_id: Mapped[int] = mapped_column(ForeignKey("benchmarks.id", ondelete="CASCADE"), nullable=False)
+    file_type_id: Mapped[int] = mapped_column(ForeignKey("file_type.id"), nullable=True)
+    cause: Mapped[str] = mapped_column(String, nullable=True)
+
+    file_type: Mapped['FileType'] = relationship("FileType", back_populates="crashes")
+    benchmarks: Mapped['Benchmarks'] = relationship("Benchmarks", back_populates="crashes")
 
 
 class FileType(Base):
@@ -86,7 +100,8 @@ class FileType(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
 
-    file: Mapped[List["File"]] = relationship("File", back_populates="file_type")
+    files: Mapped[List["File"]] = relationship("File", back_populates="file_type")
+    crashes: Mapped[List["Crash"]] = relationship("Crash", back_populates="file_type")
 
 
 class DangerType(Base):
@@ -94,7 +109,7 @@ class DangerType(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
 
-    danger: Mapped[List['Danger']] = relationship("Danger", back_populates="danger_type")
+    dangers: Mapped[List['Danger']] = relationship("Danger", back_populates="danger_type")
 
 
 class Api(Base):
@@ -102,16 +117,16 @@ class Api(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
 
-    danger: Mapped[List['Danger']] = relationship("Danger", back_populates="api")
+    dangers: Mapped[List['Danger']] = relationship("Danger", back_populates="api")
 
 
 class File(Base):
     __tablename__ = "file"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    analysis_id: Mapped[int] = mapped_column(ForeignKey("analysis.id"), nullable=False)
+    analysis_id: Mapped[int] = mapped_column(ForeignKey("analysis.id", ondelete="CASCADE"), nullable=False)
     file_type_id: Mapped[int] = mapped_column(ForeignKey("file_type.id"), nullable=False)
 
-    file_type: Mapped['FileType'] = relationship("FileType", back_populates="file")
+    file_type: Mapped['FileType'] = relationship("FileType", back_populates="files")
     analysis: Mapped['Analysis'] = relationship("Analysis", back_populates="files")
     dangers: Mapped[List['Danger']] = relationship("Danger", back_populates="file")
 
@@ -119,7 +134,7 @@ class File(Base):
 class Danger(Base):
     __tablename__ = "danger"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    file_id: Mapped[int] = mapped_column(ForeignKey("file.id"), nullable=False)
+    file_id: Mapped[int] = mapped_column(ForeignKey("file.id", ondelete="CASCADE"), nullable=False)
     danger_type_id: Mapped[int] = mapped_column(ForeignKey("danger_type.id"), nullable=False)
     api_id: Mapped[int] = mapped_column(ForeignKey("api.id"), nullable=False)
     internal_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -128,8 +143,8 @@ class Danger(Base):
     filename: Mapped[str] = mapped_column(String, nullable=True)
     dataflow: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    danger_type: Mapped['DangerType'] = relationship("DangerType", back_populates="danger")
-    api: Mapped['Api'] = relationship("Api", back_populates="danger")
+    danger_type: Mapped['DangerType'] = relationship("DangerType", back_populates="dangers")
+    api: Mapped['Api'] = relationship("Api", back_populates="dangers")
     file: Mapped['File'] = relationship("File", back_populates="dangers")
     sink_params: Mapped[List['SinkParam']] = relationship("SinkParam", back_populates="danger")
     params: Mapped[List['Param']] = relationship("Param", back_populates="danger")
@@ -138,7 +153,7 @@ class Danger(Base):
 class SinkParam(Base):
     __tablename__ = "sink_param"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    danger_id: Mapped[int] = mapped_column(ForeignKey("danger.id"), nullable=False)
+    danger_id: Mapped[int] = mapped_column(ForeignKey("danger.id", ondelete="CASCADE"), nullable=False)
     internal_id: Mapped[str] = mapped_column(String, nullable=False)
     value: Mapped[str] = mapped_column(JSON, nullable=True)
 
@@ -148,7 +163,7 @@ class SinkParam(Base):
 class Param(Base):
     __tablename__ = "param"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    danger_id: Mapped[int] = mapped_column(ForeignKey("danger.id"), nullable=False)
+    danger_id: Mapped[int] = mapped_column(ForeignKey("danger.id", ondelete="CASCADE"), nullable=False)
     internal_id: Mapped[str] = mapped_column(String, nullable=False)
 
     danger: Mapped['Danger'] = relationship("Danger", back_populates="params")
@@ -158,7 +173,7 @@ class Param(Base):
 class ParamData(Base):
     __tablename__ = "param_data"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    param_id: Mapped[Optional[int]] = mapped_column(ForeignKey("param.id"), nullable=True)
+    param_id: Mapped[Optional[int]] = mapped_column(ForeignKey("param.id", ondelete="CASCADE"), nullable=True)
     internal_name: Mapped[str] = mapped_column(String, nullable=True)
     wa: Mapped[Optional[str]] = mapped_column(JSON, nullable=True)
     line: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -193,13 +208,12 @@ def parse_json_and_populate_db(session: Session, json_data: dict):
         logging.exception(e)
 
 
-def add_benchmarks(session, analysis, benchmarks_data):
+def add_benchmarks(session: Session, analysis: Analysis, benchmarks_data: dict):
     if not benchmarks_data:
         logging.info("No benchmarks data")
         return
     benchmarks = Benchmarks(
         analysis=analysis,
-        crashes=", ".join(benchmarks_data.get("crashes")),
         cs_got_ast=benchmarks_data.get("cs: got AST"),
         cs_ast=benchmarks_data.get("cs: AST"),
         cs_cfg=benchmarks_data.get("cs: CFG"),
@@ -216,6 +230,20 @@ def add_benchmarks(session, analysis, benchmarks_data):
         bp_got_vulnerabilities=benchmarks_data.get("bp: got vulnerabilities")
     )
     session.add(benchmarks)
+
+    crash_data = benchmarks_data.get("crashes")
+    if crash_data:
+        add_crashes(session, benchmarks, crash_data)
+
+
+def add_crashes(session: Session, benchmarks: Benchmarks, crashes: list):
+    for crash_data in crashes:
+        crash = Crash(cause=crash_data, benchmarks=benchmarks)
+
+        file_type_match = re.search(fr'^({BP}|{CS}):', crash_data)
+        if file_type_match:
+            crash.file_type = get_or_create(session, FileType, FileType.name, file_type_match.group(1))
+        session.add(crash)
 
 
 def add_file(session: Session, analysis: Analysis, json_data: dict, file_type: str):
@@ -278,7 +306,7 @@ def extract_params(danger: dict, nested: bool):
     return params, sink_params
 
 
-def parse_sink_params(danger):
+def parse_sink_params(danger: dict):
     sink_params = []
     for key, value in danger.items():
         if not key.startswith("sink-param"):

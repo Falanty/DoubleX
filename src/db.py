@@ -287,12 +287,21 @@ def parse_sink_params(danger):
     return sink_params
 
 
-def get_or_create(session, model_class, field, value):
+def get_or_create(session: Session, model_class: Any, field: Mapped[Any], value: Any):
+    if not hasattr(session, "lookup_cache"):
+        session.lookup_cache = {}
+
+    cache_key = (model_class, field.key, value)
+    if cache_key in session.lookup_cache:
+        return session.lookup_cache[cache_key]
+
     instance = session.query(model_class).filter(field == value).first()
     if instance is None:
         param_map = {field.key: value}
         instance = model_class(**param_map)
         session.add(instance)
+
+    session.lookup_cache[cache_key] = instance
     return instance
 
 

@@ -4,6 +4,7 @@ import logging
 import os
 import datetime
 import re
+import pandas as pd
 from typing import Optional, List, Any
 from sqlalchemy import create_engine, text, ForeignKey, String, Integer, Boolean, Float, Engine, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, relationship, Session
@@ -25,6 +26,44 @@ DB_USER = os.getenv("POSTGRES_USER")
 DB_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 DB_HOST = os.getenv("DB_HOST")
 DB_NAME = os.getenv("POSTGRES_DB")
+
+COMPARE_SQL = text("""
+select 
+    split_part(a."extension", '/', -1) as extension,
+    a.war,
+    ft2.name as file_type,
+    d.internal_id as danger_internal_id,
+    dt.name as danger_type,
+    a2.name as api,
+    d.value as danger_value,
+    d.line as danger_line,
+    split_part(d.filename, '/', -1) as danger_filename,
+    d.dataflow,
+    sp.internal_id as sink_param_internal_id,
+    sp.value as sink_param_value,
+    p.internal_id as param_internal_id,
+    pd.internal_name as param_data_internal_name,
+    pd.wa,
+    pd.line as param_data_line,
+    split_part(pd.filename, '/', -1) as param_data_filename,
+    pd.where
+from run r 
+left join analysis a on a.run_id = r.id 
+left join benchmarks b on b.analysis_id = a.id 
+left join crash c on c.benchmarks_id = b.id 
+left join file_type ft on c.file_type_id = ft.id
+left join file f on f.analysis_id = a.id 
+left join file_type ft2 on f.file_type_id = ft2.id
+left join danger d on d.file_id = f.id 
+left join api a2 on d.api_id = a2.id 
+left join danger_type dt on dt.id = d.danger_type_id
+left join sink_param sp on sp.danger_id = d.id 
+left join param p on p.danger_id = d.id 
+left join param_data pd on pd.param_id = p.id
+--where r."name" = 'analysis/paper_vulnerable_own'
+where r.name = :run_name
+order by extension, war, file_type, danger_type, danger_internal_id, sink_param_internal_id, param_internal_id, param_data_internal_name;
+""")
 
 logging.basicConfig(
     filename=f'./logs/db_{datetime.date.today()}.log',
@@ -351,11 +390,19 @@ def main():
     parser.add_argument("-i", "--init", dest="i", action="store_true",
                         help="initializes the database. "
                              "if the database was already initialized, this has no effect")
+    parser.add_argument("-c", "--compare", dest="c", metavar=("run1", "run2"), nargs=2, type=str,
+                        help="compares two runs and saves the result as a csv file. "
+                             "the name of the file is <run1>-<run2>-diff.csv.")
+    parser.add_argument("-cd", "--compare-destination", dest="cd", metavar="path", type=str,
+                        help="path of the dir to store the comparison csv file. "
+                             "only valid in combination with '-c'")
 
     args = parser.parse_args()
     source = args.s
     destination = args.s
     init = args.i
+    compare = args.c
+    compare_destination = args.cd
 
     engine = create_engine(f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}")
     with engine.connect() as conn:
@@ -379,12 +426,27 @@ def main():
                     json_data[RUN] = root
                     json_data[FILE_NAME] = file
 
-                    logging.info(f"Saving file {i+1}/{len(files)} to db : {json_data.get(FILE_NAME)}")
+                    logging.info(f"Saving file {i+1}/{len(files)} to db: {json_data.get(FILE_NAME)}")
                     parse_json_and_populate_db(session, json_data)
         return
 
     if destination and os.path.isdir(destination):
         logging.info(f'Extracting data from db to: {destination}')
+
+    if compare and len(compare) == 2:
+        run1, run2 = compare
+        logging.info(f'Comparing data of runs: {run1} - {run2}')
+        runs = dict()
+        with engine.connect() as conn:
+            for run in compare:
+                runs[run] = pd.read_sql(COMPARE_SQL, conn, params={"run_name": run})
+        diff = runs[run1].compare(runs[run2])
+
+        file_path = f"{run1.replace('/', '_')}--{run2.replace('/', '_')}--diff.csv"
+        if compare_destination:
+            file_path = f"{compare_destination}/{file_path}"
+        logging.info(f"Saving comparison diff to {file_path}")
+        diff.to_csv(path_or_buf=file_path, index=False)
 
 
 if __name__ == "__main__":

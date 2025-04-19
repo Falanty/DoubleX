@@ -35,18 +35,18 @@ select
     d.internal_id as danger_internal_id,
     dt.name as danger_type,
     a2.name as api,
-    d.value as danger_value,
+    REGEXP_REPLACE(d.value::TEXT, 'object at 0x.*>', 'object at 0x******>') AS danger_value,
     d.line as danger_line,
     split_part(d.filename, '/', -1) as danger_filename,
     d.dataflow,
     sp.internal_id as sink_param_internal_id,
-    sp.value as sink_param_value,
+    REGEXP_REPLACE(sp.value::TEXT, 'object at 0x.*>', 'object at 0x******>') AS sink_param_value,
     p.internal_id as param_internal_id,
     pd.internal_name as param_data_internal_name,
-    pd.wa,
+    REGEXP_REPLACE(pd.wa::TEXT, 'object at 0x.*>', 'object at 0x******>') AS param_data_wa,
     pd.line as param_data_line,
     split_part(pd.filename, '/', -1) as param_data_filename,
-    pd.where
+    REGEXP_REPLACE(pd.where::TEXT, 'object at 0x.*>', 'object at 0x******>') AS param_data_where
 from run r 
 left join analysis a on a.run_id = r.id 
 left join benchmarks b on b.analysis_id = a.id 
@@ -446,7 +446,7 @@ def main():
         if compare_destination:
             file_path = f"{compare_destination}/{file_path}"
         logging.info(f"Saving comparison diff to {file_path}")
-        diff.to_csv(path_or_buf=file_path, index=False)
+        diff.to_csv(path_or_buf=file_path, index=True)
 
 
 if __name__ == "__main__":

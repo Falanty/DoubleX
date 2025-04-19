@@ -84,7 +84,7 @@ def analyze_directory(directory, args):
             analyze_extension(content_script, background_page,
                               json_analysis=analysis_path,
                               chrome=not args.not_chrome,
-                              war=args.war,
+                              war=False,
                               json_apis=args.apis,
                               manifest_path=manifest)
         if os.path.isfile(wars):
@@ -92,7 +92,7 @@ def analyze_directory(directory, args):
             analyze_extension(content_script, wars,
                               json_analysis=analysis_path.replace('.json', '-war.json'),
                               chrome=not args.not_chrome,
-                              war=args.war,
+                              war=True,
                               json_apis=args.apis,
                               manifest_path=manifest)
         logging.critical(f'Analysis completed for directory: {directory}')

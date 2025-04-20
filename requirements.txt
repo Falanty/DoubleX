@@ -1,2 +1,5 @@
 graphviz
 bs4
+sqlalchemy
+psycopg2
+pandas

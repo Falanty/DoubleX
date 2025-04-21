@@ -215,6 +215,7 @@ class Danger(Base):
     line: Mapped[str] = mapped_column(String, nullable=True)
     filename: Mapped[str] = mapped_column(String, nullable=True)
     dataflow: Mapped[bool] = mapped_column(Boolean, default=False)
+    vulnerable: Mapped[bool] = mapped_column(Boolean, nullable=True, comment="Result after manual analysis")
 
     danger_type: Mapped['DangerType'] = relationship("DangerType", back_populates="dangers")
     api: Mapped['Api'] = relationship("Api", back_populates="dangers")

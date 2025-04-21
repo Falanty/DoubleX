@@ -76,12 +76,46 @@ class Base(DeclarativeBase):
     pass
 
 
+class Analyst(Base):
+    __tablename__ = "analyst"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+
+    runs: Mapped[List['Run']] = relationship("Run", back_populates="analyst")
+
+
+class Dataset(Base):
+    __tablename__ = "dataset"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+
+    runs: Mapped[List['Run']] = relationship("Run", back_populates="dataset")
+
+
+class DoublexVersion(Base):
+    __tablename__ = "doublex_version"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=True)
+
+    runs: Mapped[List['Run']] = relationship("Run", back_populates="doublex_version")
+
+
 class Run(Base):
     __tablename__ = "run"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    comment: Mapped[str] = mapped_column(String, nullable=True)
+    analyst_id: Mapped[int] = mapped_column(ForeignKey("analyst.id"), nullable=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("dataset.id"), nullable=True)
+    doublex_version_id: Mapped[int] = mapped_column(ForeignKey("doublex_version.id"), nullable=True)
 
     analyses: Mapped[List['Analysis']] = relationship("Analysis", back_populates="run")
+    analyst: Mapped['Analyst'] = relationship("Analyst", back_populates="runs")
+    dataset: Mapped['Dataset'] = relationship("Dataset", back_populates="runs")
+    doublex_version: Mapped['DoublexVersion'] = relationship("DoublexVersion", back_populates="runs")
 
 
 class Analysis(Base):
@@ -228,7 +262,14 @@ def init_db(engine: Engine) -> None:
 
 def parse_json_and_populate_db(session: Session, json_data: dict):
     try:
-        run = get_or_create(session, Run, Run.name, json_data[RUN])
+        run = session.query(Run).filter(Run.name == json_data[RUN]).first()
+        if run is None:
+            run_data = json_data[RUN].split('/')[-1].split('_')
+            run = Run(name=json_data[RUN],
+                      dataset=get_or_create(session, Dataset, Dataset.name, run_data[0]),
+                      doublex_version=get_or_create(session, DoublexVersion, DoublexVersion.name, run_data[1]),
+                      analyst=get_or_create(session, Analyst, Analyst.name, run_data[2]))
+            session.add(run)
 
         analysis = Analysis(run=run,
                             extension=json_data.get("extension"),

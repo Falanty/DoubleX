@@ -125,6 +125,7 @@ class Analysis(Base):
     extension: Mapped[str] = mapped_column(String, nullable=True)
     file_name: Mapped[str] = mapped_column(String, nullable=True)
     war: Mapped[bool] = mapped_column(Boolean, default=False)
+    manifest_version: Mapped[int] = mapped_column(Integer, nullable=True)
 
     run: Mapped['Run'] = relationship("Run", back_populates="analyses")
     benchmarks: Mapped[Optional['Benchmarks']] = relationship("Benchmarks", back_populates="analysis")
@@ -215,7 +216,9 @@ class Danger(Base):
     line: Mapped[str] = mapped_column(String, nullable=True)
     filename: Mapped[str] = mapped_column(String, nullable=True)
     dataflow: Mapped[bool] = mapped_column(Boolean, default=False)
-    vulnerable: Mapped[bool] = mapped_column(Boolean, nullable=True, comment="Result after manual analysis")
+    dangerous_dataflow: Mapped[bool] = mapped_column(Boolean, nullable=True, comment="Result after manual analysis")
+    exploitable: Mapped[bool] = mapped_column(Boolean, nullable=True, comment="Result after manual analysis")
+    one_way_dataflow: Mapped[bool] = mapped_column(Boolean, nullable=True, comment="Result after manual analysis")
 
     danger_type: Mapped['DangerType'] = relationship("DangerType", back_populates="dangers")
     api: Mapped['Api'] = relationship("Api", back_populates="dangers")

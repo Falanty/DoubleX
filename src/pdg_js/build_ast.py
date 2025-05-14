@@ -15,7 +15,7 @@
 
 
 """
-    From JS source code to an Esprima AST exported in JSON.
+    From JS source code to an Espree AST exported in JSON.
     From JSON to ExtendedAst and Node objects.
     From Node objects to JSON.
     From JSON to JS source code using Escodegen.
@@ -33,9 +33,42 @@ from . import node as _node
 from . import extended_ast as _extended_ast
 
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+MODULE = 'module'
+SCRIPT = 'script'
+COMMONJS = 'commonjs'
 
 
 def get_extended_ast(input_file, json_path, remove_json=True):
+    """
+    JavaScript AST production.
+    Tries parsing for the source_types 'module', 'script' and 'commonjs'.in this order and
+    returns the first successfully parsed AST.
+
+        -------
+        Parameters:
+        - input_file: str
+            Path of the file to produce an AST from.
+        - json_path: str
+            Path of the JSON file to temporary store the AST in.
+        - remove_json: bool
+            Indicates whether to remove or not the JSON file containing the Espree AST.
+            Default: True.
+
+        -------
+        Returns:
+        - ExtendedAst
+            The extended AST (i.e., contains type, filename, body, sourceType, range, comments,
+            tokens, and possibly leadingComments) of input_file.
+        - None if an error occurred.
+    """
+    for source_type in [MODULE, SCRIPT, COMMONJS]:
+        extended_ast = get_extended_ast_for_source_type(input_file, json_path, source_type, remove_json)
+        if extended_ast is not None:
+            return extended_ast
+    return None
+
+
+def get_extended_ast_for_source_type(input_file, json_path, source_type=MODULE, remove_json=True):
     """
         JavaScript AST production.
 
@@ -45,8 +78,10 @@ def get_extended_ast(input_file, json_path, remove_json=True):
             Path of the file to produce an AST from.
         - json_path: str
             Path of the JSON file to temporary store the AST in.
+        - source_type: str
+            Type of source to use. Default: MODULE.
         - remove_json: bool
-            Indicates whether to remove or not the JSON file containing the Esprima AST.
+            Indicates whether to remove or not the JSON file containing the Espree AST.
             Default: True.
 
         -------
@@ -59,33 +94,33 @@ def get_extended_ast(input_file, json_path, remove_json=True):
 
     try:
         produce_ast = subprocess.run(['node', os.path.join(SRC_PATH, 'parser.js'),
-                                      input_file, json_path],
+                                      input_file, json_path, source_type],
                                      stdout=subprocess.PIPE, check=True)
     except subprocess.CalledProcessError:
-        logging.critical('Esprima parsing error for %s', input_file)
+        logging.critical(f"Espree parsing error for %s", input_file)
         return None
 
     if produce_ast.returncode == 0:
 
         with open(json_path) as json_data:
-            esprima_ast = json.loads(json_data.read())
+            espree_ast = json.loads(json_data.read())
         if remove_json:
             os.remove(json_path)
 
         extended_ast = _extended_ast.ExtendedAst()
         extended_ast.filename = input_file
-        extended_ast.set_type(esprima_ast['type'])
-        extended_ast.set_body(esprima_ast['body'])
-        extended_ast.set_source_type(esprima_ast['sourceType'])
-        extended_ast.set_range(esprima_ast['range'])
-        extended_ast.set_tokens(esprima_ast['tokens'])
-        extended_ast.set_comments(esprima_ast['comments'])
-        if 'leadingComments' in esprima_ast:
-            extended_ast.set_leading_comments(esprima_ast['leadingComments'])
+        extended_ast.set_type(espree_ast['type'])
+        extended_ast.set_body(espree_ast['body'])
+        extended_ast.set_source_type(espree_ast['sourceType'])
+        extended_ast.set_range(espree_ast['range'])
+        extended_ast.set_tokens(espree_ast['tokens'])
+        extended_ast.set_comments(espree_ast['comments'])
+        if 'leadingComments' in espree_ast:
+            extended_ast.set_leading_comments(espree_ast['leadingComments'])
 
         return extended_ast
 
-    logging.critical('Esprima could not produce an AST for %s', input_file)
+    logging.critical('Espree could not produce an AST for %s', input_file)
     return None
 
 
@@ -121,7 +156,7 @@ def beautiful_print_ast(ast, delete_leaf, depth=0, max_depth=2 ** 63):
         -------
         Parameters:
         - ast: dict
-            Contains an Esprima AST of a JS file, i.e., get_extended_ast(<input_file>, <json_path>)
+            Contains an Espree AST of a JS file, i.e., get_extended_ast(<input_file>, <json_path>)
             output or get_extended_ast(<input_file>, <json_path>).get_ast() output.
         - depth: int
             Initial depth of the tree. Default: 0.
@@ -327,7 +362,7 @@ def get_code(json_path, code_path='1', remove_json=True, test=False):
         - code_path: str
             Path of the file to store the code in. If 1, then displays it to stdout.
         - remove_json: bool
-            Indicates whether to remove or not the JSON file containing the Esprima AST.
+            Indicates whether to remove or not the JSON file containing the Espree AST.
             Default: True.
         - test: bool
             Indicates whether we are in test mode. Default: False.

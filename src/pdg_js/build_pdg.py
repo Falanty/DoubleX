@@ -114,16 +114,16 @@ def get_data_flow(input_file, benchmarks, store_pdgs=None, check_var=False, beau
     start = timeit.default_timer()
     utility_df.limit_memory(20*10**9)  # Limiting the memory usage to 20GB
     if input_file.endswith('.js'):
-        esprima_json = input_file.replace('.js', '.json')
+        espree_json = input_file.replace('.js', '.json')
     else:
-        esprima_json = input_file + '.json'
-    extended_ast = build_ast.get_extended_ast(input_file, esprima_json)
+        espree_json = input_file + '.json'
+    extended_ast = build_ast.get_extended_ast(input_file, espree_json)
 
     benchmarks['errors'] = []
 
     if extended_ast is not None:
         benchmarks['got AST'] = timeit.default_timer() - start
-        start = utility_df.micro_benchmark('Successfully got Esprima AST in',
+        start = utility_df.micro_benchmark('Successfully got Espree AST in',
                                            timeit.default_timer() - start)
         ast = extended_ast.get_ast()
         if beautiful_print:
@@ -169,7 +169,7 @@ def get_data_flow(input_file, benchmarks, store_pdgs=None, check_var=False, beau
             display_graph.draw_pdg(dfg_nodes, attributes=True, save_path=save_path_pdg)
 
         if check_json:  # Looking for possible bugs when building the AST / json doc in build_ast
-            my_json = esprima_json.replace('.json', '-back.json')
+            my_json = espree_json.replace('.json', '-back.json')
             build_ast.save_json(dfg_nodes, my_json)
             print(build_ast.get_code(my_json))
 
@@ -187,7 +187,7 @@ def get_data_flow(input_file, benchmarks, store_pdgs=None, check_var=False, beau
         if store_pdgs is not None:
             store_pdg = os.path.join(store_pdgs, os.path.basename(input_file.replace('.js', '')))
             pickle_dump_process(dfg_nodes, store_pdg)
-            json_analysis = os.path.join(store_pdgs, os.path.basename(esprima_json))
+            json_analysis = os.path.join(store_pdgs, os.path.basename(espree_json))
             with open(json_analysis, 'w') as json_data:
                 json.dump(benchmarks, json_data, indent=4, sort_keys=False, default=default,
                           skipkeys=True)

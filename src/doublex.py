@@ -21,6 +21,7 @@ import datetime
 import os
 import argparse
 import logging
+import time
 from multiprocessing import Process, Queue
 
 from vulnerability_detection import analyze_extension
@@ -54,6 +55,19 @@ def consumer(dir_queue: Queue, args):
         logging.info(f'Started analyzing directory: {directory}')
         analyze_directory(directory, args)
         logging.info(f'Finished analyzing directory: {directory}')
+
+
+def monitor_and_restart(processes, target_function, dir_queue, args):
+    while dir_queue.qsize() > 1:
+        for i, process in enumerate(processes):
+            if not process.is_alive():
+                logging.critical(f"{process.name} has died. Restarting...")
+                new_process = Process(target=target_function, args=[dir_queue, args], name=f"{process.name}-Restarted")
+                new_process.start()
+                processes[i] = new_process
+                logging.critical(f"Restarted {new_process.name}")
+        time.sleep(10)
+    logging.critical(f"Exiting Monitoring - Remaining queue items: {dir_queue.qsize()}")
 
 
 def analyze_directory(directory, args):
@@ -189,6 +203,14 @@ def main():
         for process in analysis_processes:
             process.start()
         all_processes = analysis_processes + [input_process]
+
+        monitor_and_restart(
+            processes=analysis_processes,
+            target_function=consumer,
+            dir_queue=dir_queue,
+            args=args
+        )
+
         for process in all_processes:
             process.join()
 

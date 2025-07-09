@@ -15,7 +15,7 @@
 
 
 """
-    Definition of the class ExtendedAst: corresponds to the output of Espree's parse function
+    Definition of the class ExtendedAst: corresponds to the output of Esprima's parse function
     with the arguments: {range: true, loc: true, tokens: true, tolerant: true, comment: true}.
 """
 
@@ -23,7 +23,7 @@
 
 
 class ExtendedAst:
-    """ Stores the Espree formatted AST into python objects. """
+    """ Stores the Esprima formatted AST into python objects. """
 
     def __init__(self):
         self.type = None

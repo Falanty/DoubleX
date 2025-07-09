@@ -14,7 +14,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-// Conversion of a JS file into its Espree AST.
+// Conversion of a JS file into its Esprima AST.
 
 
 module.exports = {
@@ -22,31 +22,28 @@ module.exports = {
 };
 
 
-const espree = require("espree");
+var esprima = require("esprima");
 var es = require("escodegen");
 var fs = require("fs");
 var process = require("process");
 
 
 /**
- * Extraction of the AST of an input JS file using Espree.
+ * Extraction of the AST of an input JS file using Esprima.
  *
  * @param js
  * @param json_path
- * @param source_type
  * @returns {*}
  */
-function js2ast(js, json_path, source_type) {
+function js2ast(js, json_path) {
     var text = fs.readFileSync(js).toString('utf-8');
     try {
-        var ast = espree.parse(text, {
+        var ast = esprima.parseModule(text, {
             range: true,
             loc: true,
             tokens: true,
             tolerant: true,
-            comment: true,
-            ecmaVersion: "latest",
-            sourceType: source_type
+            comment: true
         });
     } catch(e) {
         console.error(js, e);
@@ -65,4 +62,4 @@ function js2ast(js, json_path, source_type) {
     return ast;
 }
 
-js2ast(process.argv[2], process.argv[3], process.argv[4]);
+js2ast(process.argv[2], process.argv[3]);

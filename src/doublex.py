@@ -18,6 +18,7 @@
     To call DoubleX from the command-line.
 """
 import datetime
+import gc
 import os
 import argparse
 import logging
@@ -55,6 +56,7 @@ def consumer(dir_queue: Queue, args):
         logging.critical(f'Started analyzing directory: {directory}')
         analyze_directory(directory, args)
         logging.critical(f'Finished analyzing directory: {directory}')
+        gc.collect()
 
 
 def monitor_and_restart(processes, target_function, dir_queue, args):
@@ -65,6 +67,7 @@ def monitor_and_restart(processes, target_function, dir_queue, args):
                 new_process = Process(target=target_function, args=[dir_queue, args], name=f"{process.name}-Restarted")
                 new_process.start()
                 processes[i] = new_process
+                gc.collect()
                 logging.critical(f"Restarted {new_process.name}")
         time.sleep(10)
     logging.critical(f"Exiting Monitoring - Remaining queue items: {dir_queue.qsize()}")

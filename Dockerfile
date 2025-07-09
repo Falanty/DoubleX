@@ -11,7 +11,7 @@ RUN apt-get update \
 COPY . .
 
 RUN cd /app/src \
-    && npm install espree \
+    && npm install esprima \
     && npm install escodegen \
     && npm install -g js-beautify
 

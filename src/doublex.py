@@ -66,6 +66,7 @@ def monitor_and_restart(processes, target_function, dir_queue, args):
                 logging.critical(f"{process.name} has died. Restarting...")
                 new_process = Process(target=target_function, args=[dir_queue, args], name=f"{process.name}-Restarted")
                 new_process.start()
+                processes[i].join()
                 processes[i] = new_process
                 gc.collect()
                 logging.critical(f"Restarted {new_process.name}")

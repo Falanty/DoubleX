@@ -49,6 +49,9 @@ def consumer(dir_queue: Queue, args):
     while True:
         logging.critical(f'Current directories in queue: {dir_queue.qsize()}')
         directory = dir_queue.get()
+        if directory in args.ignore_list:
+            logging.critical(f'{directory} is in ignore list - skipping...')
+            continue
         if directory is None:
             logging.critical(f'Exiting directory queue...')
             dir_queue.put(None)
@@ -170,6 +173,9 @@ def main():
     parser.add_argument("-skip", "--skip-existing", dest="skip_existing", action="store_true",
                         help="Skips the analysis for extensions if an analysis file exists already."
                              "This argument is only used in combination with '-dir' or '-dirs'")
+    parser.add_argument("-ignore", "--ignore-extensions", metavar="path", type=str,
+                        help="path of text file containing extensions to be ignored. "
+                             "This argument is only used in combination with '-dirs'")
     parser.add_argument("--apis", metavar="str", type=str, default='permissions',
                         help='''specify the sensitive APIs to consider for the analysis:
     - 'permissions' (default): DoubleX selected APIs iff the extension has the corresponding permissions;
@@ -194,6 +200,9 @@ def main():
         logging.critical(f'Analyzing extension directory: {directory}')
         analyze_directory(directory, args)
     elif directories:
+        if args.ignore_extensions:
+            logging.critical(f"Ignoring extensions '{args.ignore_extensions}'")
+            args.ignore_list = open(args.ignore_extensions, 'r').read().splitlines()
         dir_queue = Queue()
         logging.critical(f'Analyzing extension directories in: {directories}')
         dirs = os.listdir(directories)

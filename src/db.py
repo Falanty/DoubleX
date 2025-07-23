@@ -5,7 +5,7 @@ import os
 import datetime
 import re
 import pandas as pd
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 from sqlalchemy import create_engine, text, ForeignKey, String, Integer, Boolean, Float, Engine, JSON, UniqueConstraint, \
     CursorResult
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, relationship, Session
@@ -493,10 +493,18 @@ def build_evolutions_dict(extension_list) -> Dict[str, Any]:
                     file_type_2: {
                         extension_version_1: 0,
                         extension_version_2: 1,
+                    },
+                    file_type_1-war: {
+                        extension_version_1: 5,
+                        extension_version_2: 1,
+                    }
+                    file_type_2-war: {
+                        extension_version_1: 2,
+                        extension_version_2: 3,
                     }
                 },
                 api_2: {
-                    file_type_2: {
+                    file_type_1: {
                         extension_version_1: 3,
                         extension_version_2: 2,
                     }
@@ -510,7 +518,8 @@ def build_evolutions_dict(extension_list) -> Dict[str, Any]:
         extension_name = extension["extension_name_without_version"]
         extension_api = extension["api"]
         extension_version = extension["extension"]
-        file_type = extension["file_type"]
+        war = extension["war"]
+        file_type = f'{extension["file_type"]}{"-war" if war else ""}'
         dataflow = extension["dataflow"]
 
         if extension_api is None:
@@ -548,7 +557,7 @@ def filter_evolutions_with_dataflow(evolutions: Dict[str, Any]) -> Dict[str, Any
     return filtered_evolutions
 
 
-def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> Dict[str, int]:
+def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> dict[str, Union[dict[str, int], dict[str, int]]]:
     """
     Calculate the changes in dataflow based on evolutions.
 
@@ -559,56 +568,79 @@ def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> Dict[str, int]:
         A dictionary summarizing the counts of added, removed, mixed, and unchanged changes in dataflow.
     """
     dataflow_changes = {
-        "added": 0,
-        "removed": 0,
-        "mixed": 0,
-        "unchanged": 0
+        "extensions_count": {
+            "added": 0,
+            "removed": 0,
+            "mixed": 0,
+            "unchanged": 0
+        },
+        "versions_count": {
+            "added": 0,
+            "removed": 0,
+        },
+        "extensions": {}
     }
 
     for extension, api_dicts in evolutions.items():
-        for _, file_types in api_dicts.items():
-            for _, versions in file_types.items():
-                added, removed = analyze_version_changes(versions)
+        dataflow_changes["extensions"][extension] = {
+            "added": 0,
+            "removed": 0
+        }
+        for api, file_types in api_dicts.items():
+            for file_type, versions in file_types.items():
+                logging.debug(f"Calculating dataflow for extension: {extension} - {api} - {file_type}")
+                added_count, removed_count = analyze_version_changes(versions)
+                dataflow_changes["versions_count"]["added"] += added_count
+                dataflow_changes["versions_count"]["removed"] += removed_count
+                dataflow_changes["extensions"][extension]["added"] += added_count
+                dataflow_changes["extensions"][extension]["removed"] += removed_count
+
+                added = added_count > 0
+                removed = removed_count > 0
+
                 if added and removed:
-                    logging.info(f"Mixed dataflow changes for extension: {extension}")
-                    dataflow_changes["mixed"] += 1
+                    logging.info(f"Mixed dataflow changes for extension: {extension} - {api} - {file_type}")
+                    dataflow_changes["extensions_count"]["mixed"] += 1
                 elif added:
-                    logging.info(f"Added dataflow changes for extension: {extension}")
-                    dataflow_changes["added"] += 1
+                    logging.info(f"Added dataflow changes for extension: {extension} - {api} - {file_type}")
+                    dataflow_changes["extensions_count"]["added"] += 1
                 elif removed:
-                    logging.info(f"Removed dataflow changes for extension: {extension}")
-                    dataflow_changes["removed"] += 1
+                    logging.info(f"Removed dataflow changes for extension: {extension} - {api} - {file_type}")
+                    dataflow_changes["extensions_count"]["removed"] += 1
                 else:
-                    dataflow_changes["unchanged"] += 1
+                    dataflow_changes["extensions_count"]["unchanged"] += 1
 
     return dataflow_changes
 
 
-def analyze_version_changes(versions: Dict[str, int]) -> (bool, bool):
+def analyze_version_changes(versions: Dict[str, int]) -> (int, int):
     """
-    Analyze changes between versions and determine if counts were added or removed.
+    Analyze changes between versions and determine if counts of dataflow increased or decreased.
 
     Args:
         versions: A dictionary where keys are version strings, and values are their counts.
 
     Returns:
         A tuple:
-        - added (bool): True if there was any increase in counts between versions.
-        - removed (bool): True if there was any decrease in counts between versions.
+        - added (int): number of increases in counts between versions.
+        - removed (int): number of decreases in counts between versions.
     """
-    added = False
-    removed = False
+    added = 0
+    removed = 0
     # Get an iterator of version counts
-    version_counts = iter(versions.values())
-    prev_version_count = next(version_counts, None)
+    version_to_counts = iter(versions.items())
+    prev_version, prev_count = next(version_to_counts, None)
 
-    for count in version_counts:
-        if count > prev_version_count:
-            added = True
-        elif count < prev_version_count:
-            removed = True
-        prev_version_count = count
+    for version, count in version_to_counts:
+        logging.debug(f"Analyzing version changes: {prev_version} - {version}")
+        logging.debug(f"Counts: {prev_count} - {count}")
+        if count > prev_count:
+            added += 1
+        elif count < prev_count:
+            removed += 1
+        prev_version, prev_count = version, count
 
+    logging.debug(f"added: {added} - removed: {removed}")
     return added, removed
 
 
@@ -713,7 +745,11 @@ def main():
     if evolutions_calc:
         with engine.connect() as conn:
             try:
-                codex_data = conn.execute(text("SELECT * FROM codex_espree_patrick_extensions ORDER BY extension"))
+                codex_data = conn.execute(text("""
+                    SELECT * 
+                    FROM codex_espree_patrick_extensions 
+                    ORDER BY extension_name_without_version, string_to_array(split_part(extension, '.', -1), '_')::int[]
+                """))
                 calculate_evo_numbers(codex_data, evolutions_calc)
             except Exception as e:
                 logging.exception(f"Could not retrieve data: {e}")

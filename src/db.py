@@ -605,13 +605,8 @@ def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> dict[str, Union[di
         A dictionary summarizing the counts of added, removed, mixed, and unchanged changes in dataflow.
     """
     dataflow_changes = {
-        "extensions_count": {
-            "added": 0,
-            "removed": 0,
-            "mixed": 0,
-            "unchanged": 0
-        },
-        "versions_count": {
+        "apis": {},
+        "all_changes": {
             "added": 0,
             "removed": 0,
         },
@@ -624,11 +619,22 @@ def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> dict[str, Union[di
             "removed": 0
         }
         for api, file_types in api_dicts.items():
+            if api not in dataflow_changes["apis"]:
+                dataflow_changes["apis"][api] = {}
+
             for file_type, versions in file_types.items():
+                if file_type not in dataflow_changes["apis"][api]:
+                    dataflow_changes["apis"][api][file_type] = {
+                        "added": 0,
+                        "removed": 0,
+                        "mixed": 0,
+                        "unchanged": 0
+                    }
+
                 logging.debug(f"Calculating dataflow for extension: {extension} - {api} - {file_type}")
                 added_count, removed_count = analyze_version_changes(versions)
-                dataflow_changes["versions_count"]["added"] += added_count
-                dataflow_changes["versions_count"]["removed"] += removed_count
+                dataflow_changes["all_changes"]["added"] += added_count
+                dataflow_changes["all_changes"]["removed"] += removed_count
                 dataflow_changes["extensions"][extension]["added"] += added_count
                 dataflow_changes["extensions"][extension]["removed"] += removed_count
 
@@ -637,16 +643,18 @@ def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> dict[str, Union[di
 
                 if added and removed:
                     logging.info(f"Mixed dataflow changes for extension: {extension} - {api} - {file_type}")
-                    dataflow_changes["extensions_count"]["mixed"] += 1
+                    dataflow_changes["apis"][api][file_type]["mixed"] += 1
                 elif added:
                     logging.info(f"Added dataflow changes for extension: {extension} - {api} - {file_type}")
-                    dataflow_changes["extensions_count"]["added"] += 1
+                    dataflow_changes["apis"][api][file_type]["added"] += 1
                 elif removed:
                     logging.info(f"Removed dataflow changes for extension: {extension} - {api} - {file_type}")
-                    dataflow_changes["extensions_count"]["removed"] += 1
+                    dataflow_changes["apis"][api][file_type]["removed"] += 1
                 else:
-                    dataflow_changes["extensions_count"]["unchanged"] += 1
-
+                    dataflow_changes["apis"][api][file_type]["unchanged"] += 1
+    logging.debug(dataflow_changes["extensions"])
+    dataflow_changes["extension_with_addition"] = sum((1 if extension_data["added"] else 0) for extension_data in dataflow_changes["extensions"].values())
+    dataflow_changes["extension_with_removal"] = sum(1 if extension_data["removed"] else 0 for extension_data in dataflow_changes["extensions"].values())
     return dataflow_changes
 
 

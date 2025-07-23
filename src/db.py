@@ -459,24 +459,27 @@ def calculate_evolutions(extension_list: CursorResult, target_file: str) -> None
         json.dump(filtered_evolutions, f)
 
 
-def calculate_evo_numbers(extension_list, target_file: str):
+def calculate_evo_numbers(extension_list, api_list, target_file: str):
     logging.info("Calculating extension evolutions")
 
     # Step 1: Build the evolutions dictionary
-    evolutions = build_evolutions_dict(extension_list)
+    evolutions = build_evolutions_dict(extension_list, api_list)
 
     # Step 2: Filter extensions with at least one dataflow
     filtered_evolutions = filter_evolutions_with_dataflow(evolutions)
 
-    # Step 3: Calculate dataflow changes
-    dataflow_changes = calculate_dataflow_changes(filtered_evolutions)
+    # Step 3: Transform evolutions to calculate differences in version changes
+    transformed_evolutions = transform_evolutions(filtered_evolutions)
 
-    # Step 4: Write results to target file
+    # Step 4: Calculate dataflow changes
+    dataflow_changes = calculate_dataflow_changes(transformed_evolutions)
+
+    # Step 5: Write results to target file
     logging.info(f"Dataflow changes: {dataflow_changes}")
     write_json_to_file(dataflow_changes, target_file)
 
 
-def build_evolutions_dict(extension_list) -> Dict[str, Any]:
+def build_evolutions_dict(extension_danger_list, api_list) -> Dict[str, Any]:
     """
     Build the evolutions dictionary from the extension list.
 
@@ -485,55 +488,57 @@ def build_evolutions_dict(extension_list) -> Dict[str, Any]:
 
         {
             extension_name_1: {
-                api_1: {
+                extension_version_1: {
                     file_type_1: {
-                        extension_version_1: 0,
-                        extension_version_2: 0,
+                        api_1: 0,
+                        api_2: 0,
                     },
                     file_type_2: {
-                        extension_version_1: 0,
-                        extension_version_2: 1,
+                        api_1: 0,
+                        api_2: 1,
                     },
                     file_type_1-war: {
-                        extension_version_1: 5,
-                        extension_version_2: 1,
+                        api_1: 5,
+                        api_2: 1,
                     }
                     file_type_2-war: {
-                        extension_version_1: 2,
-                        extension_version_2: 3,
+                        api_1: 2,
+                        api_2: 3,
                     }
                 },
-                api_2: {
+                extension_name_2: {
                     file_type_1: {
-                        extension_version_1: 3,
-                        extension_version_2: 2,
+                        api_1: 3,
+                        api_2: 2,
                     }
                 }
             }
         }
     """
     evolutions = {}
+    apis = list(api_list.mappings().fetchall())
 
-    for extension in extension_list.mappings():
-        extension_name = extension["extension_name_without_version"]
-        extension_api = extension["api"]
-        extension_version = extension["extension"]
-        war = extension["war"]
-        file_type = f'{extension["file_type"]}{"-war" if war else ""}'
-        dataflow = extension["dataflow"]
+    for danger in extension_danger_list.mappings():
+        extension_name = danger["extension_name_without_version"]
+        extension_api = danger["api"]
+        extension_version = danger["extension"]
+        war = danger["war"]
+        file_type = f'{danger["file_type"]}{"-war" if war else ""}'
+        dataflow = danger["dataflow"]
+
+        # Initialize nested dictionary levels as needed
+        evolutions.setdefault(extension_name, {})
+        evolutions[extension_name].setdefault(extension_version, {})
+        evolutions[extension_name][extension_version].setdefault(file_type, {})
+        for api in apis:
+            evolutions[extension_name][extension_version][file_type].setdefault(api["name"], 0)
 
         if extension_api is None:
             continue
 
-        # Initialize nested dictionary levels as needed
-        evolutions.setdefault(extension_name, {})
-        evolutions[extension_name].setdefault(extension_api, {})
-        evolutions[extension_name][extension_api].setdefault(file_type, {})
-        evolutions[extension_name][extension_api][file_type].setdefault(extension_version, 0)
-
         # Increment dataflow count
         if dataflow:
-            evolutions[extension_name][extension_api][file_type][extension_version] += 1
+            evolutions[extension_name][extension_version][file_type][extension_api] += 1
 
     logging.debug(f"Evolutions pre filter: {len(evolutions)}")
     return evolutions
@@ -543,18 +548,50 @@ def filter_evolutions_with_dataflow(evolutions: Dict[str, Any]) -> Dict[str, Any
     """Filter evolutions to include only those with at least one dataflow."""
     filtered_evolutions = {}
 
-    for extension, api_dicts in evolutions.items():
+    for extension, version_dict in evolutions.items():
         dataflow_for_extension = sum(
             count
-            for file_types in api_dicts.values()
-            for versions in file_types.values()
-            for count in versions.values()
+            for file_types in version_dict.values()
+            for apis in file_types.values()
+            for count in apis.values()
         )
         if dataflow_for_extension > 0:
-            filtered_evolutions[extension] = api_dicts
+            filtered_evolutions[extension] = version_dict
 
     logging.debug(f"Evolutions post filter: {len(filtered_evolutions)}")
     return filtered_evolutions
+
+
+def transform_evolutions(new_evolutions: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Transform the new evolutions format into the expected format for calculate_dataflow_changes.
+
+    Args:
+        new_evolutions: A dictionary containing extension evolution data in the new format.
+
+    Returns:
+        Transformed data in the expected format.
+    """
+    transformed_data = {}
+
+    for extension_name, extension_versions in new_evolutions.items():
+        transformed_data[extension_name] = {}
+
+        for version, file_types in extension_versions.items():
+            for file_type, apis in file_types.items():
+                for api, count in apis.items():
+                    # Ensure that the api exists in the transformed data
+                    if api not in transformed_data[extension_name]:
+                        transformed_data[extension_name][api] = {}
+
+                    # Ensure that the file_type exists in the current api
+                    if file_type not in transformed_data[extension_name][api]:
+                        transformed_data[extension_name][api][file_type] = {}
+
+                    # Transform the version and count into the expected format
+                    transformed_data[extension_name][api][file_type][version] = count
+
+    return transformed_data
 
 
 def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> dict[str, Union[dict[str, int], dict[str, int]]]:
@@ -747,10 +784,15 @@ def main():
             try:
                 codex_data = conn.execute(text("""
                     SELECT * 
-                    FROM codex_espree_patrick_extensions 
+                    FROM codex_espree_patrick_extensions_dataflow 
                     ORDER BY extension_name_without_version, string_to_array(split_part(extension, '.', -1), '_')::int[]
                 """))
-                calculate_evo_numbers(codex_data, evolutions_calc)
+                api_data = conn.execute(text("""
+                    SELECT * 
+                    FROM api
+                    ORDER BY name
+                """))
+                calculate_evo_numbers(codex_data, api_data, evolutions_calc)
             except Exception as e:
                 logging.exception(f"Could not retrieve data: {e}")
 

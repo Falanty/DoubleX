@@ -6,7 +6,8 @@ import datetime
 import re
 import pandas as pd
 from typing import Optional, List, Any
-from sqlalchemy import create_engine, text, ForeignKey, String, Integer, Boolean, Float, Engine, JSON, UniqueConstraint
+from sqlalchemy import create_engine, text, ForeignKey, String, Integer, Boolean, Float, Engine, JSON, UniqueConstraint, \
+    CursorResult
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, relationship, Session
 
 BP = "bp"
@@ -417,6 +418,47 @@ def get_or_create(session: Session, model_class: Any, field: Mapped[Any], value:
     return instance
 
 
+def calculate_evolutions(extension_list: CursorResult, target_file: str) -> None:
+    logging.info(f"Calculating extension evolutions")
+    evolutions = dict()
+    for extension in extension_list.mappings():
+        extension_name = extension["extension_name_without_version"]
+        extension_api = extension["name"]
+        if extension_name not in evolutions:
+            if extension_api is not None:
+                evolutions[extension_name] = {extension_api: [dict(extension)]}
+            else:
+                evolutions[extension_name] = {"None": [dict(extension)]}
+            continue
+        if extension_api is None:
+            continue
+        for api, previous_versions in evolutions[extension_name].items():
+            last_version = previous_versions[-1]
+            if api is not None:
+                if api != extension_api:
+                    continue
+            else:
+                evolutions[extension_name][extension_api] = [last_version]
+            if extension["extension"] != last_version["extension"] and extension["dataflow"] != last_version["dataflow"]:
+                evolutions[extension_name][extension_api].append(dict(extension))
+    logging.debug(f"Evolutions pre filter: {evolutions}")
+    filtered_evolutions = dict()
+    filtered_extensions_with_version = list()
+    for extension, api_lists in evolutions.items():
+        for api, extensions in api_lists.items():
+            if len(extensions) < 2:
+                continue
+            if extension not in filtered_evolutions:
+                filtered_evolutions[extension] = dict()
+            filtered_evolutions[extension][api] = extensions
+            filtered_extensions_with_version += [extension["extension"].split("/")[-1] for extension in extensions]
+    logging.debug(f"Evolutions post filter: {filtered_evolutions}")
+    extension_list_string = '\n'.join(filtered_extensions_with_version)
+    logging.info(f"Extension with version post filter: {extension_list_string}")
+    with open(target_file, "w") as f:
+        json.dump(filtered_evolutions, f)
+
+
 def main():
     """ Parsing command line parameters. """
 
@@ -438,6 +480,9 @@ def main():
     parser.add_argument("-c", "--compare", dest="c", metavar=("run1", "run2"), nargs=2, type=str,
                         help="compares two runs and saves the result as a csv file. "
                              "the name of the file is <run1>-<run2>-diff.csv.")
+    parser.add_argument("-e", "--evolutions", dest="e", type=str,
+                        help="compares version of extensions and calculates evolutions. "
+                             "The result is stored in a json file.")
     parser.add_argument("-cd", "--compare-destination", dest="cd", metavar="path", type=str,
                         help="path of the dir to store the comparison csv file. "
                              "only valid in combination with '-c'")
@@ -448,6 +493,7 @@ def main():
     init = args.i
     compare = args.c
     compare_destination = args.cd
+    evolutions = args.e
 
     engine = create_engine(f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}")
     with engine.connect() as conn:
@@ -492,6 +538,14 @@ def main():
             file_path = f"{compare_destination}/{file_path}"
         logging.info(f"Saving comparison diff to {file_path}")
         diff.to_csv(path_or_buf=file_path, index=True)
+
+    if evolutions:
+        with engine.connect() as conn:
+            try:
+                codex_data = conn.execute(text("SELECT * FROM codex_espree_patrick_extensions_dataflow ORDER BY extension"))
+                calculate_evolutions(codex_data, evolutions)
+            except Exception as e:
+                logging.exception(f"Could not retrieve data: {e}")
 
 
 if __name__ == "__main__":

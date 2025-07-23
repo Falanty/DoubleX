@@ -5,7 +5,7 @@ import os
 import datetime
 import re
 import pandas as pd
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from sqlalchemy import create_engine, text, ForeignKey, String, Integer, Boolean, Float, Engine, JSON, UniqueConstraint, \
     CursorResult
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, relationship, Session
@@ -459,75 +459,163 @@ def calculate_evolutions(extension_list: CursorResult, target_file: str) -> None
         json.dump(filtered_evolutions, f)
 
 
-def calculate_evo_numbers(extension_list: CursorResult, target_file: str):
-    logging.info(f"Calculating extension evolutions")
-    evolutions = dict()
+def calculate_evo_numbers(extension_list, target_file: str):
+    logging.info("Calculating extension evolutions")
+
+    # Step 1: Build the evolutions dictionary
+    evolutions = build_evolutions_dict(extension_list)
+
+    # Step 2: Filter extensions with at least one dataflow
+    filtered_evolutions = filter_evolutions_with_dataflow(evolutions)
+
+    # Step 3: Calculate dataflow changes
+    dataflow_changes = calculate_dataflow_changes(filtered_evolutions)
+
+    # Step 4: Write results to target file
+    logging.info(f"Dataflow changes: {dataflow_changes}")
+    write_json_to_file(dataflow_changes, target_file)
+
+
+def build_evolutions_dict(extension_list) -> Dict[str, Any]:
+    """
+    Build the evolutions dictionary from the extension list.
+
+    Returns:
+        A dictionary of the following format:
+
+        {
+            extension_name_1: {
+                api_1: {
+                    file_type_1: {
+                        extension_version_1: 0,
+                        extension_version_2: 0,
+                    },
+                    file_type_2: {
+                        extension_version_1: 0,
+                        extension_version_2: 1,
+                    }
+                },
+                api_2: {
+                    file_type_2: {
+                        extension_version_1: 3,
+                        extension_version_2: 2,
+                    }
+                }
+            }
+        }
+    """
+    evolutions = {}
+
     for extension in extension_list.mappings():
         extension_name = extension["extension_name_without_version"]
         extension_api = extension["api"]
         extension_version = extension["extension"]
-        if extension_api is None:
-            continue
-        if extension_name not in evolutions:
-            evolutions[extension_name] = dict()
         file_type = extension["file_type"]
         dataflow = extension["dataflow"]
-        if evolutions[extension_name].get(extension_api) is None:
-            evolutions[extension_name][extension_api] = dict()
-        if evolutions[extension_name][extension_api].get(file_type) is None:
-            evolutions[extension_name][extension_api][file_type] = dict()
-        if evolutions[extension_name][extension_api][file_type].get(extension_version) is None:
-            evolutions[extension_name][extension_api][file_type][extension_version] = 0
+
+        if extension_api is None:
+            continue
+
+        # Initialize nested dictionary levels as needed
+        evolutions.setdefault(extension_name, {})
+        evolutions[extension_name].setdefault(extension_api, {})
+        evolutions[extension_name][extension_api].setdefault(file_type, {})
+        evolutions[extension_name][extension_api][file_type].setdefault(extension_version, 0)
+
+        # Increment dataflow count
         if dataflow:
             evolutions[extension_name][extension_api][file_type][extension_version] += 1
-    logging.debug(f"Evolutions pre filter: {evolutions}")
-    with open("debug_evo_calc.json", "w") as f:
-        json.dump(evolutions, f)
 
-    # filter at least one dataflow
-    filtered_evolutions = dict()
+    logging.debug(f"Evolutions pre filter: {len(evolutions)}")
+    return evolutions
+
+
+def filter_evolutions_with_dataflow(evolutions: Dict[str, Any]) -> Dict[str, Any]:
+    """Filter evolutions to include only those with at least one dataflow."""
+    filtered_evolutions = {}
+
     for extension, api_dicts in evolutions.items():
-        dataflow_for_extension = 0
-        for api, file_types in api_dicts.items():
-            for file_type, versions in file_types.items():
-                dataflow_for_extension += sum(versions.values())
-        if dataflow_for_extension != 0:
+        dataflow_for_extension = sum(
+            count
+            for file_types in api_dicts.values()
+            for versions in file_types.values()
+            for count in versions.values()
+        )
+        if dataflow_for_extension > 0:
             filtered_evolutions[extension] = api_dicts
-    logging.debug(f"Evolutions post filter: {evolutions}")
 
+    logging.debug(f"Evolutions post filter: {len(filtered_evolutions)}")
+    return filtered_evolutions
+
+
+def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> Dict[str, int]:
+    """
+    Calculate the changes in dataflow based on evolutions.
+
+    Args:
+        evolutions: A dictionary containing filtered extension evolution data.
+
+    Returns:
+        A dictionary summarizing the counts of added, removed, mixed, and unchanged changes in dataflow.
+    """
     dataflow_changes = {
         "added": 0,
-        "sub": 0,
+        "removed": 0,
         "mixed": 0,
         "unchanged": 0
     }
-    logging.debug("calculating dataflow differences")
-    for extension, api_dicts in filtered_evolutions.items():
-        for api, file_types in api_dicts.items():
-            for file_type, versions in file_types.items():
-                prev_version_count = None
-                added = False
-                sub = False
-                for version, count in versions.items():
-                    if prev_version_count is None:
-                        prev_version_count = count
-                        continue
-                    if count > prev_version_count:
-                        added = True
-                        dataflow_changes["added"] += 1
-                        continue
-                    if count < prev_version_count:
-                        sub = True
-                        dataflow_changes["sub"] += 1
-                    prev_version_count = count
-                if added and sub:
+
+    for extension, api_dicts in evolutions.items():
+        for _, file_types in api_dicts.items():
+            for _, versions in file_types.items():
+                added, removed = analyze_version_changes(versions)
+                if added and removed:
+                    logging.info(f"Mixed dataflow changes for extension: {extension}")
                     dataflow_changes["mixed"] += 1
-                if not added and not sub:
+                elif added:
+                    logging.info(f"Added dataflow changes for extension: {extension}")
+                    dataflow_changes["added"] += 1
+                elif removed:
+                    logging.info(f"Removed dataflow changes for extension: {extension}")
+                    dataflow_changes["removed"] += 1
+                else:
                     dataflow_changes["unchanged"] += 1
 
-    logging.info(f"Dataflow changes: {dataflow_changes}")
-    with open(target_file, "w") as f:
-        json.dump(dataflow_changes, f)
+    return dataflow_changes
+
+
+def analyze_version_changes(versions: Dict[str, int]) -> (bool, bool):
+    """
+    Analyze changes between versions and determine if counts were added or removed.
+
+    Args:
+        versions: A dictionary where keys are version strings, and values are their counts.
+
+    Returns:
+        A tuple:
+        - added (bool): True if there was any increase in counts between versions.
+        - removed (bool): True if there was any decrease in counts between versions.
+    """
+    added = False
+    removed = False
+    # Get an iterator of version counts
+    version_counts = iter(versions.values())
+    prev_version_count = next(version_counts, None)
+
+    for count in version_counts:
+        if count > prev_version_count:
+            added = True
+        elif count < prev_version_count:
+            removed = True
+        prev_version_count = count
+
+    return added, removed
+
+
+def write_json_to_file(data: Any, file_path: str):
+    """Write the given data to a JSON file."""
+    with open(file_path, "w") as f:
+        json.dump(data, f)
 
 
 def main():

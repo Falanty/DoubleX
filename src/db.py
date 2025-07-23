@@ -459,6 +459,77 @@ def calculate_evolutions(extension_list: CursorResult, target_file: str) -> None
         json.dump(filtered_evolutions, f)
 
 
+def calculate_evo_numbers(extension_list: CursorResult, target_file: str):
+    logging.info(f"Calculating extension evolutions")
+    evolutions = dict()
+    for extension in extension_list.mappings():
+        extension_name = extension["extension_name_without_version"]
+        extension_api = extension["api"]
+        extension_version = extension["extension"]
+        if extension_api is None:
+            continue
+        if extension_name not in evolutions:
+            evolutions[extension_name] = dict()
+        file_type = extension["file_type"]
+        dataflow = extension["dataflow"]
+        if evolutions[extension_name].get(extension_api) is None:
+            evolutions[extension_name][extension_api] = dict()
+        if evolutions[extension_name][extension_api].get(file_type) is None:
+            evolutions[extension_name][extension_api][file_type] = dict()
+        if evolutions[extension_name][extension_api][file_type].get(extension_version) is None:
+            evolutions[extension_name][extension_api][file_type][extension_version] = 0
+        if dataflow:
+            evolutions[extension_name][extension_api][file_type][extension_version] += 1
+    logging.debug(f"Evolutions pre filter: {evolutions}")
+    with open("debug_evo_calc.json", "w") as f:
+        json.dump(evolutions, f)
+
+    # filter at least one dataflow
+    filtered_evolutions = dict()
+    for extension, api_dicts in evolutions.items():
+        dataflow_for_extension = 0
+        for api, file_types in api_dicts.items():
+            for file_type, versions in file_types.items():
+                dataflow_for_extension += sum(versions.values())
+        if dataflow_for_extension != 0:
+            filtered_evolutions[extension] = api_dicts
+    logging.debug(f"Evolutions post filter: {evolutions}")
+
+    dataflow_changes = {
+        "added": 0,
+        "sub": 0,
+        "mixed": 0,
+        "unchanged": 0
+    }
+    logging.debug("calculating dataflow differences")
+    for extension, api_dicts in filtered_evolutions.items():
+        for api, file_types in api_dicts.items():
+            for file_type, versions in file_types.items():
+                prev_version_count = None
+                added = False
+                sub = False
+                for version, count in versions.items():
+                    if prev_version_count is None:
+                        prev_version_count = count
+                        continue
+                    if count > prev_version_count:
+                        added = True
+                        dataflow_changes["added"] += 1
+                        continue
+                    if count < prev_version_count:
+                        sub = True
+                        dataflow_changes["sub"] += 1
+                    prev_version_count = count
+                if added and sub:
+                    dataflow_changes["mixed"] += 1
+                if not added and not sub:
+                    dataflow_changes["unchanged"] += 1
+
+    logging.info(f"Dataflow changes: {dataflow_changes}")
+    with open(target_file, "w") as f:
+        json.dump(dataflow_changes, f)
+
+
 def main():
     """ Parsing command line parameters. """
 
@@ -481,7 +552,10 @@ def main():
                         help="compares two runs and saves the result as a csv file. "
                              "the name of the file is <run1>-<run2>-diff.csv.")
     parser.add_argument("-e", "--evolutions", dest="e", type=str,
-                        help="compares version of extensions and calculates evolutions. "
+                        help="compares version of extensions and identifies evolutions. "
+                             "The result is stored in a json file.")
+    parser.add_argument("-ec", "--evolutions-calc", dest="ec", type=str,
+                        help="compares version of extensions and calculates evolution differences. "
                              "The result is stored in a json file.")
     parser.add_argument("-cd", "--compare-destination", dest="cd", metavar="path", type=str,
                         help="path of the dir to store the comparison csv file. "
@@ -494,6 +568,7 @@ def main():
     compare = args.c
     compare_destination = args.cd
     evolutions = args.e
+    evolutions_calc = args.ec
 
     engine = create_engine(f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}")
     with engine.connect() as conn:
@@ -544,6 +619,14 @@ def main():
             try:
                 codex_data = conn.execute(text("SELECT * FROM codex_espree_patrick_extensions_dataflow ORDER BY extension"))
                 calculate_evolutions(codex_data, evolutions)
+            except Exception as e:
+                logging.exception(f"Could not retrieve data: {e}")
+
+    if evolutions_calc:
+        with engine.connect() as conn:
+            try:
+                codex_data = conn.execute(text("SELECT * FROM codex_espree_patrick_extensions ORDER BY extension"))
+                calculate_evo_numbers(codex_data, evolutions_calc)
             except Exception as e:
                 logging.exception(f"Could not retrieve data: {e}")
 

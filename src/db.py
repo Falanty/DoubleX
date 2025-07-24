@@ -522,8 +522,7 @@ def build_evolutions_dict(extension_danger_list, api_list) -> Dict[str, Any]:
         extension_name = danger["extension_name_without_version"]
         extension_api = danger["api"]
         extension_version = danger["extension"]
-        war = danger["war"]
-        file_type = f'{danger["file_type"]}{"-war" if war else ""}'
+        file_type = danger["file_type"]
         dataflow = danger["dataflow"]
 
         # Initialize nested dictionary levels as needed
@@ -605,12 +604,20 @@ def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> dict[str, Union[di
         A dictionary summarizing the counts of added, removed, mixed, and unchanged changes in dataflow.
     """
     dataflow_changes = {
-        "apis": {},
         "all_changes": {
             "added": 0,
             "removed": 0,
         },
-        "extensions": {}
+        "apis": {},
+        "extensions": {},
+        "compiled": {
+            "extensions": {
+                "added": 0,
+                "removed": 0,
+                "mixed": 0,
+                "unchanged": 0
+            },
+        }
     }
 
     for extension, api_dicts in evolutions.items():
@@ -626,36 +633,31 @@ def calculate_dataflow_changes(evolutions: Dict[str, Any]) -> dict[str, Union[di
                 if file_type not in dataflow_changes["apis"][api]:
                     dataflow_changes["apis"][api][file_type] = {
                         "added": 0,
-                        "removed": 0,
-                        "mixed": 0,
-                        "unchanged": 0
+                        "removed": 0
                     }
-
                 logging.debug(f"Calculating dataflow for extension: {extension} - {api} - {file_type}")
                 added_count, removed_count = analyze_version_changes(versions)
                 dataflow_changes["all_changes"]["added"] += added_count
                 dataflow_changes["all_changes"]["removed"] += removed_count
                 dataflow_changes["extensions"][extension]["added"] += added_count
                 dataflow_changes["extensions"][extension]["removed"] += removed_count
-
-                added = added_count > 0
-                removed = removed_count > 0
-
-                if added and removed:
-                    logging.info(f"Mixed dataflow changes for extension: {extension} - {api} - {file_type}")
-                    dataflow_changes["apis"][api][file_type]["mixed"] += 1
-                elif added:
-                    logging.info(f"Added dataflow changes for extension: {extension} - {api} - {file_type}")
-                    dataflow_changes["apis"][api][file_type]["added"] += 1
-                elif removed:
-                    logging.info(f"Removed dataflow changes for extension: {extension} - {api} - {file_type}")
-                    dataflow_changes["apis"][api][file_type]["removed"] += 1
-                else:
-                    dataflow_changes["apis"][api][file_type]["unchanged"] += 1
+                dataflow_changes["apis"][api][file_type]["added"] += added_count
+                dataflow_changes["apis"][api][file_type]["removed"] += removed_count
     logging.debug(dataflow_changes["extensions"])
-    dataflow_changes["extension_with_addition"] = sum((1 if extension_data["added"] else 0) for extension_data in dataflow_changes["extensions"].values())
-    dataflow_changes["extension_with_removal"] = sum(1 if extension_data["removed"] else 0 for extension_data in dataflow_changes["extensions"].values())
+    for extension_data in dataflow_changes["extensions"].values():
+        calculate_mixed_unchanged(dataflow_changes["compiled"]["extensions"], extension_data)
     return dataflow_changes
+
+
+def calculate_mixed_unchanged(dataflow_changes, extension_data):
+    if extension_data["added"] and extension_data["removed"]:
+        dataflow_changes["mixed"] += 1
+    elif extension_data["added"]:
+        dataflow_changes["added"] += 1
+    elif extension_data["removed"]:
+        dataflow_changes["removed"] += 1
+    else:
+        dataflow_changes["unchanged"] += 1
 
 
 def analyze_version_changes(versions: Dict[str, int]) -> (int, int):

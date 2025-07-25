@@ -742,6 +742,16 @@ def main():
                 codex_data = conn.execute(text("""
                     SELECT * 
                     FROM codex_espree_patrick_extensions_dataflow 
+                    where id not in (
+                        select d.id
+                        from run r 
+                        join analysis a on a.run_id = r.id 
+                        join benchmarks b on b.analysis_id = a.id
+                        join crash c on c.benchmarks_id = b.id
+                        join file f on f.analysis_id = a.id 
+                        join danger d on d.file_id = f.id
+                        where r.name = 'analysis/codex_espree_patrick'
+                    )
                     ORDER BY extension_name_without_version, string_to_array(split_part(extension, '.', -1), '_')::int[]
                 """))
                 api_data = conn.execute(text("""

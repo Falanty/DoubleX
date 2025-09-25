@@ -19,6 +19,7 @@
 """
 import datetime
 import gc
+import json
 import os
 import argparse
 import logging
@@ -32,11 +33,40 @@ CONTENT_SCRIPT = 'contentscript.js'
 
 logging.basicConfig(
     filename=f'./logs/{datetime.date.today()}.log',
-    level=logging.CRITICAL,
+    level=logging.INFO,
     format='[%(processName)s] %(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+
+
+def extract_manifest_version(directory):
+    logging.info(f'Extracting manifest version from {directory}')
+    manifest_versions = list()
+    for extension_id in os.listdir(directory):
+        extension_path = os.path.join(directory, extension_id)
+        if not os.path.isdir(extension_path):
+            logging.warning(f'Skipping {extension_path} - not a directory')
+            continue
+
+        manifest_path = os.path.join(extension_path, 'manifest.json')
+        if not os.path.isfile(manifest_path):
+            logging.warning(f'Skipping {manifest_path} - not a file')
+            continue
+
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as manifest_file:
+                manifest_data = json.load(manifest_file)
+                manifest_version = manifest_data.get('manifest_version')
+                if manifest_version is None:
+                    logging.warning(f'Skipping {manifest_path} - manifest version not found')
+                manifest_versions.append(f"{extension_id}, manifest_version = {manifest_version};")
+        except (json.JSONDecodeError, IOError) as e:
+            logging.error(f'Error parsing manifest file: {manifest_path} - {e}')
+
+    with open(os.path.join(directory, "manifest_versions.txt"), 'w', encoding='utf-8') as outfile:
+        outfile.write("\n".join(manifest_versions))
+    logging.info(f'Finished extracting manifest versions from {manifest_versions}')
 
 
 def producer(dir_queue: Queue, root, dirs):
@@ -176,6 +206,10 @@ def main():
     parser.add_argument("-ignore", "--ignore-extensions", metavar="path", type=str,
                         help="path of text file containing extensions to be ignored. "
                              "This argument is only used in combination with '-dirs'")
+    parser.add_argument("-mv", "--manifest-versions", dest="manifest_versions", metavar="path", type=str,
+                        help="path of the directory containing directories of extension files. "
+                             "Extracts the manifest_version of the extension manifest.json file. "
+                             "Saves the output in the file named 'manifest_versions.txt' in the extensions directory.")
     parser.add_argument("--apis", metavar="str", type=str, default='permissions',
                         help='''specify the sensitive APIs to consider for the analysis:
     - 'permissions' (default): DoubleX selected APIs iff the extension has the corresponding permissions;
@@ -192,6 +226,10 @@ def main():
     directory = args.dir
     directories = args.dirs
     process_count = args.pc
+
+    if args.manifest_versions:
+        extract_manifest_version(args.manifest_versions)
+        return
 
     if args.analysis_dir and not os.path.isdir(args.analysis_dir):
         os.makedirs(args.analysis_dir)

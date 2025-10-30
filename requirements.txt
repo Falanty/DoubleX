@@ -3,3 +3,4 @@ bs4
 sqlalchemy
 psycopg2
 pandas
+py_mini_racer

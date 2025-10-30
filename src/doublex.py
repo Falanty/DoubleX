@@ -79,7 +79,7 @@ def consumer(dir_queue: Queue, args):
     while True:
         logging.critical(f'Current directories in queue: {dir_queue.qsize()}')
         directory = dir_queue.get()
-        if directory in args.ignore_list:
+        if args.ignore_extensions and directory in args.ignore_list:
             logging.critical(f'{directory} is in ignore list - skipping...')
             continue
         if directory is None:

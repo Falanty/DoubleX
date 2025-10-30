@@ -19,8 +19,13 @@
 """
 
 import logging
+import os
+
+from py_mini_racer import MiniRacer
 
 from . import node as _node
+
+SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 
 """
 In the following,
@@ -188,13 +193,19 @@ def compute_operators(operator, node_a, node_b, initial_node=None, recdepth=0, r
             logging.warning('Unable to compute %s %s %s', a, operator, b)
             return None
 
+    # create js context for operator calculation
+    with open(os.path.join(SRC_PATH, "operator.js"), "r") as file:
+        js_code = file.read()
+    js_context = MiniRacer()
+    js_context.eval(js_code)
+
     try:
         if operator in ('+=', '+'):
             return operator_plus(a, b)
         if operator in ('-=', '-'):
             return operator_minus(a, b)
         if operator in ('*=', '*'):
-            return operator_asterisk(a, b)
+            return js_context.call("infixOperator", operator, a, b)
         if operator in ('/=', '/'):
             return operator_slash(a, b)
         if operator in ('**=', '**'):
@@ -541,11 +552,6 @@ def operator_plus(a, b):
 def operator_minus(a, b):
     """ Evaluates a - b. """
     return a - b
-
-
-def operator_asterisk(a, b):
-    """ Evaluates a * b. """
-    return a * b
 
 
 def operator_slash(a, b):

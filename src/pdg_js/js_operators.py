@@ -19,8 +19,19 @@
 """
 
 import logging
+import os
+
+from py_mini_racer import MiniRacer
 
 from . import node as _node
+
+SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+
+PREFIX_OPERATORS = ('!')
+POSTFIX_OPERATORS = ('++', '--')
+INFIX_OPERATORS = ('*', '*=', '+', '+=', '-', '-=', '/', '/=', '**', '**=', '%', '%=', '==', '===', '!=', '!==',
+                   '>', '<', '>=', '<=', '&&', '||')
+UNSUPPORTED_OPERATORS = ('&', '>>', '>>>', '<<', '^', '|', '&=', '>>=', '>>>=', '<<=', '^=', '|=', 'in', 'instanceof')
 
 """
 In the following,
@@ -188,43 +199,20 @@ def compute_operators(operator, node_a, node_b, initial_node=None, recdepth=0, r
             logging.warning('Unable to compute %s %s %s', a, operator, b)
             return None
 
+    # create js context for operator calculation
+    with open(os.path.join(SRC_PATH, "operator.js"), "r") as file:
+        js_code = file.read()
+    js_context = MiniRacer()
+    js_context.eval(js_code)
+
     try:
-        if operator in ('+=', '+'):
-            return operator_plus(a, b)
-        if operator in ('-=', '-'):
-            return operator_minus(a, b)
-        if operator in ('*=', '*'):
-            return operator_asterisk(a, b)
-        if operator in ('/=', '/'):
-            return operator_slash(a, b)
-        if operator in ('**=', '**'):
-            return operator_2asterisk(a, b)
-        if operator in ('%=', '%'):
-            return operator_modulo(a, b)
-        if operator == '++':
-            return operator_plus_plus(a)
-        if operator == '--':
-            return operator_minus_minus(a)
-        if operator in ('==', '==='):
-            return operator_equal(a, b)
-        if operator in ('!=', '!=='):
-            return operator_different(a, b)
-        if operator == '!':
-            return operator_not(a)
-        if operator == '>=':
-            return operator_bigger_equal(a, b)
-        if operator == '>':
-            return operator_bigger(a, b)
-        if operator == '<=':
-            return operator_smaller_equal(a, b)
-        if operator == '<':
-            return operator_smaller(a, b)
-        if operator == '&&':
-            return operator_and(a, b)
-        if operator == '||':
-            return operator_or(a, b)
-        if operator in ('&', '>>', '>>>', '<<', '^', '|', '&=', '>>=', '>>>=', '<<=', '^=', '|=',
-                        'in', 'instanceof'):
+        if operator in INFIX_OPERATORS:
+            return js_context.call("infixOperator", operator, a, b)
+        elif operator in PREFIX_OPERATORS:
+            return js_context.call("prefixOperator", operator, a)
+        elif operator in POSTFIX_OPERATORS:
+            return js_context.call("postfixOperator", operator, a)
+        elif operator in UNSUPPORTED_OPERATORS:
             logging.warning('Currently not handling the operator %s', operator)
             return None
 
@@ -536,86 +524,3 @@ def operator_plus(a, b):
     if isinstance(a, str) or isinstance(b, str):
         return str(a) + str(b)
     return a + b
-
-
-def operator_minus(a, b):
-    """ Evaluates a - b. """
-    return a - b
-
-
-def operator_asterisk(a, b):
-    """ Evaluates a * b. """
-    return a * b
-
-
-def operator_slash(a, b):
-    """ Evaluates a / b. """
-    if b == 0:
-        logging.warning('Trying to compute %s / %s', a, b)
-        return None
-    return a / b
-
-
-def operator_2asterisk(a, b):
-    """ Evaluates a ** b. """
-    return a ** b
-
-
-def operator_modulo(a, b):
-    """ Evaluates a % b. """
-    return a % b
-
-
-def operator_plus_plus(a):
-    """ Evaluates a++. """
-    return a + 1
-
-
-def operator_minus_minus(a):
-    """ Evaluates a--. """
-    return a - 1
-
-
-def operator_equal(a, b):
-    """ Evaluates a == b. """
-    return a == b
-
-
-def operator_different(a, b):
-    """ Evaluates a != b. """
-    return a != b
-
-
-def operator_not(a):
-    """ Evaluates !a. """
-    return not a
-
-
-def operator_bigger_equal(a, b):
-    """ Evaluates a >= b. """
-    return a >= b
-
-
-def operator_bigger(a, b):
-    """ Evaluates a > b. """
-    return a > b
-
-
-def operator_smaller_equal(a, b):
-    """ Evaluates a <= b. """
-    return a <= b
-
-
-def operator_smaller(a, b):
-    """ Evaluates a < b. """
-    return a < b
-
-
-def operator_and(a, b):
-    """ Evaluates a and b. """
-    return a and b
-
-
-def operator_or(a, b):
-    """ Evaluates a or b. """
-    return a or b

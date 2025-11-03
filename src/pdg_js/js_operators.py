@@ -545,7 +545,12 @@ def operator_minus(a, b):
 
 def operator_asterisk(a, b):
     """ Evaluates a * b. """
-    return a * b
+    try:
+        a = float(a)
+        b = float(b)
+        return a * b
+    except (ValueError, TypeError):
+        return None
 
 
 def operator_slash(a, b):
